@@ -2,6 +2,8 @@ package smartfab.algorithms.ricart;
 
 import java.util.List;
 
+import smartfab.Smartfab.CalibrationRequest;
+
 /**
  * @author Gianluca Bianchi
  * 
