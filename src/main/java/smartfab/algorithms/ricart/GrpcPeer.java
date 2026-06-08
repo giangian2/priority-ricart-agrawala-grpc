@@ -1,4 +1,4 @@
-package smartfab.model.edge;
+package smartfab.algorithms.ricart;
 
 import java.util.HashMap;
 import java.util.List;
@@ -10,8 +10,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import smartfab.CalibrationServiceGrpc;
 import smartfab.Smartfab.CalibrationRequest;
-import smartfab.algorithms.ricart.Peer;
-import smartfab.algorithms.ricart.PeerInfo;
+import smartfab.model.edge.ObserverFactory;
 
 public class GrpcPeer implements Peer{
 

@@ -7,35 +7,36 @@ package smartfab.algorithms.ricart;
  * It will use the {@link smartfab.algorithms.ricart.Peer} class to send messages to other peers.
  * 
  */
-public class RicartMutualExclusion implements MutualExclusionAlgorithm {
+public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm {
+
+    private final Peer peer;
+
+    public RicartMutualExclusionPeer(Peer peer){
+        this.peer = peer;
+    }
 
     @Override
-    public void requestCalibration(int lineId, double criticality) {
-        // TODO Auto-generated method stub
+    public synchronized void requestCalibration(int lineId, double criticality) {
         throw new UnsupportedOperationException("Unimplemented method 'requestCalibration'");
     }
 
     @Override
-    public void releaseCalibration() {
-        // TODO Auto-generated method stub
+    public synchronized void releaseCalibration() {
         throw new UnsupportedOperationException("Unimplemented method 'releaseCalibration'");
     }
 
     @Override
-    public void onRequestReceived(int senderId, double senderCriticality, String senderAddress, int senderPort) {
-        // TODO Auto-generated method stub
+    public synchronized void onRequestReceived(int senderId, double senderCriticality, String senderAddress, int senderPort) {
         throw new UnsupportedOperationException("Unimplemented method 'onRequestReceived'");
     }
 
     @Override
-    public void onGrantReceived(int senderId) {
-        // TODO Auto-generated method stub
+    public synchronized void onGrantReceived(int senderId) {
         throw new UnsupportedOperationException("Unimplemented method 'onGrantReceived'");
     }
 
     @Override
-    public void onReleaseReceived(int senderId) {
-        // TODO Auto-generated method stub
+    public synchronized void onReleaseReceived(int senderId) {
         throw new UnsupportedOperationException("Unimplemented method 'onReleaseReceived'");
     }
     
