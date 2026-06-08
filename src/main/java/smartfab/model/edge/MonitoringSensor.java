@@ -1,11 +1,5 @@
 package smartfab.model.edge;
 
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 public class MonitoringSensor extends Simulator {
     private static int ID = 1;
 
