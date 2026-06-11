@@ -3,6 +3,9 @@ package smartfab.model.edge;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * @author Ginaluca Bianchi
+ */
 public class MeasurementBuffer implements Buffer{
 
     private final List<Measurement> measurements;
@@ -14,6 +17,7 @@ public class MeasurementBuffer implements Buffer{
     @Override
     public synchronized void addMeasurement(Measurement m) {
         this.measurements.add(m);
+        //release all blocked threads
         notifyAll();
         System.out.println("Added measurement "+m.value());
     }
@@ -22,6 +26,7 @@ public class MeasurementBuffer implements Buffer{
     public synchronized List<Measurement> readAllAndClear() {
         while(measurements.size() == 0){
             try {
+                //wait for new measurements inserted
                 wait();
             } catch (InterruptedException e) {
                 e.printStackTrace();

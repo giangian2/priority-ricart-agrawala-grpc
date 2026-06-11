@@ -18,6 +18,18 @@ public interface Peer {
 
     /**
      * 
+     * @param peer
+     */
+    void addPeer(PeerInfo peer);
+
+    /**
+     * 
+     * @param peerId
+     */
+    void removePeer(int peerId);
+
+    /**
+     * 
      * @return
      */
     List<PeerInfo> getAllPeers();

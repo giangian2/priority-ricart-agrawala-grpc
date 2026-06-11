@@ -1,4 +1,4 @@
-package smartfab.model.edge;
+package smartfab.algorithms.ricart;
 
 import io.grpc.ManagedChannel;
 import smartfab.CalibrationServiceGrpc.CalibrationServiceStub;

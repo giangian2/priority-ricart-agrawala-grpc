@@ -2,10 +2,23 @@ package smartfab.model.edge;
 
 import io.grpc.stub.StreamObserver;
 import smartfab.Smartfab.Empty;
-import smartfab.Smartfab.P2PJoinResponse;
 
+/**
+ * @author Gianluca Bianchi
+ */
 public class ObserverFactory {
     
+    /**
+     * Return a empty tream observer, it will replicate the behavior of
+     * ASYNC and TRANSIENT communications: the "peer" that sends any message
+     * will not listen the observer in another thread. The "receiver" peer
+     * will send another message to the previous peer.
+     * Note that this assumption is particularly relevant: we assume that 
+     * gRPC communications in the context of mutual exclusion algorithm are 
+     * ONE-DIRECTIONAL. A Response is not handled through {@link io.grpc.stub.StreamObserver},
+     * but with another incominc GRPC Request.
+     * @return {@link io.grpc.stub.StreamObserver}
+     */
     public StreamObserver<Empty> emptyStreamObserver(){
         return new StreamObserver<Empty>(){
 
@@ -19,32 +32,6 @@ public class ObserverFactory {
 
             @Override
             public void onCompleted() {}
-
         };
     }
-
-    public StreamObserver<P2PJoinResponse> joinResponseStreamObserver(){
-        return new StreamObserver<P2PJoinResponse>(){
-
-            @Override
-            public void onNext(P2PJoinResponse value) {
-                // TODO Auto-generated method stub
-                throw new UnsupportedOperationException("Unimplemented method 'onNext'");
-            }
-
-            @Override
-            public void onError(Throwable t) {
-                // TODO Auto-generated method stub
-                throw new UnsupportedOperationException("Unimplemented method 'onError'");
-            }
-
-            @Override
-            public void onCompleted() {
-                // TODO Auto-generated method stub
-                throw new UnsupportedOperationException("Unimplemented method 'onCompleted'");
-            }
-
-        };
-    }
-        
 }
