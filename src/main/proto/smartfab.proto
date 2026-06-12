@@ -23,13 +23,8 @@ message P2PJoinRequest{
   int32 senderPort      = 3;
 }
 
-message P2PJoinResponse{
-  bool accepted   = 1;
-  string message  = 2;
-}
-
 service CalibrationService {
   rpc requestCalibration(CalibrationRequest) returns (Empty);
   rpc grantCalibrationAccess(CalibrationRequest) returns (Empty);
-  rpc joinP2P(P2PJoinRequest) returns (P2PJoinResponse);
+  rpc joinP2P(P2PJoinRequest) returns (Empty);
 }
