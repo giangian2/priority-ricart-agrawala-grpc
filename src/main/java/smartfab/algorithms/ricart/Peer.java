@@ -36,6 +36,18 @@ public interface Peer {
 
     /**
      * 
+     * @return
+     */
+    List<PeerStub> getAllPeersStub();
+
+    /**
+     * 
+     * @param request
+     */
+    void sendRequest(CalibrationRequest request);
+
+    /**
+     * 
      * @param request
      */
     void sendRequestToAll(CalibrationRequest request);

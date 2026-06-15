@@ -8,6 +8,9 @@ package smartfab.algorithms.ricart;
  * in the proper way since we are in a distirbuted system.
  */
 public interface MutualExclusionAlgorithm {
+
+    void joinPeer(int senderId, String senderAddress, int senderPort);
+
     /**
      * A Node sends this messagge to all the lines 
      * in order to request the access to claibration mode
@@ -15,7 +18,7 @@ public interface MutualExclusionAlgorithm {
      * @param lineId
      * @param criticality
      */
-    void requestCalibration(int lineId, double criticality);
+    void requestCalibration(int senderId, double criticality);
 
     /**
      * This method is called when a node hash finished using the shared resource,
