@@ -1,9 +1,14 @@
 package smartfab.model.edge;
 
+import java.io.IOException;
 import java.util.Optional;
 
+import io.grpc.Server;
+import io.grpc.ServerBuilder;
+import smartfab.Smartfab.P2PJoinRequest;
 import smartfab.algorithms.ricart.GrpcPeer;
 import smartfab.algorithms.ricart.MutualExclusionAlgorithm;
+import smartfab.algorithms.ricart.PeerInfo;
 import smartfab.algorithms.ricart.RicartMutualExclusionPeer;
 import smartfab.model.events.CalibrationGrantEvent;
 import smartfab.model.events.CalibrationTerminatedEvent;
@@ -60,6 +65,7 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
     }
 
     /**
+     * @TODO THINK ABOUT USING BUILDER PATTERN
      * This method will perform the setup of the production line starting by creating the following resources:
      *  - Buffers for storing measurements and agreggated-data
      *  - Threads for sensor and for data-acquisition pipline and mqtt pub
@@ -74,7 +80,7 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
      * @param adminServerPort
      * @return 
      */
-    public static Optional<ProductionLine> init(int lineId, String adminServerAddress, int adminServerPort){
+    public static Optional<ProductionLine> init(int lineId, String lineAddress, int linePort, String adminServerAddress, int adminServerPort){
         //Initialize shared buffers
         var averagesBuffer          = new AveragesBuffer();
         var measurementBuffer       = new MeasurementBuffer();
@@ -82,14 +88,32 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
         var sensorThread            = new MonitoringSensor(measurementBuffer);
         var slidingWindowProcessor  = new SlidingWindowProcessor(measurementBuffer, averagesBuffer);
         var AveragesConsumer        = new AveragesConsumer(lineId, averagesBuffer);
-        var peer                    = new RicartMutualExclusionPeer(new GrpcPeer());
+        var peer                    = new RicartMutualExclusionPeer(new GrpcPeer(), lineId);
+        var peerRestClient          = new PeerRestClient("http://"+adminServerAddress+":"+adminServerPort);
+
+        var otherPeers = peerRestClient.registerPeer(new PeerInfo(lineId, lineAddress, linePort));
+
+        otherPeers.stream().forEach((p)->{
+            peer.addPeer(new PeerInfo(p.getID(),p.getAddress(),p.getPort()));
+        });
         
         /**
-         * @TODO
-         * Make HTTP request to administration server in order to get the peer list and to the
-         * peer.addPeer() operation for each one.
+         * @todo
          * 
+         * Move this method to the mutual exclsion peer class,
+         * in this phase we need only to create the stubs.
+         * Than the production line will have a method to announce 
+         * the presence that will call the "send P2P join request"
+         * method and send via GRP the Join Request.
+         * Also rename the method joinPeer to OnP2PJoinRequestReceived() ...
          */
+        peer.getAllPeersStub().forEach((ps)->{
+            ps.getStub().joinP2P(P2PJoinRequest.newBuilder()
+                    .setLineId(lineId)
+                    .setSnederAddress(lineAddress)
+                    .setSenderPort(linePort)
+                    .build(), new ObserverFactory().emptyStreamObserver());
+        });
 
         return Optional.of(new ProductionLine(lineId,
             peer, 
@@ -115,12 +139,13 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
 
     public void stop(){
         this.stopThreads();
-        this.clearBuffers();
+        this.clearBuffers(); 
     }
     
     
     @Override
     public void onEvent(ProductionLineEvent event) {
+        System.out.println("notify");
         if(event instanceof CriticalStatusEvent){
             var ev = (CriticalStatusEvent) event;
             this.onCalibrationNeeded(ev.getCriticality());
@@ -147,12 +172,13 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
     private void pauseThreads(){
         this.slidingWindowProcessorThread.stopProcessing();
         this.sensorThread.pauseMeasuring();
+        this.averagesConsumerThread.stopConsuming();
     }
 
     private void startThreads(){
         this.sensorThread.startMeasuring();
         this.slidingWindowProcessorThread.startProcessing();
-        this.averagesConsumerThread.start();
+        this.averagesConsumerThread.startConsuming();
     }
 
     private void stopThreads(){
@@ -166,6 +192,7 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
 
     private void onCalibrationAcquired(){
         try {
+            System.out.println("LINE "+this.lineId+": CALIBRATING");
             Thread.sleep(6000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -175,27 +202,64 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
     }
 
     private void onCalibrationTerminated(){
+        System.out.println("LINE "+this.lineId+": Calibration ended");
+        this.mutualExclusionPeer.releaseCalibration();
         this.start();
     }
 
-    public static void main(String... args) throws InterruptedException{
-        var prodLine = ProductionLine.init(0, "127.0.0.1", 8000);
+    public static void main(String... args) throws InterruptedException {
+        if (args.length < 3) {
+            System.err.println("Error: Pass the grpc local line ID, ip address and port [-Pargs='1 127.0.0.1 8001']");
+            return;
+        }
 
-        if(prodLine.isPresent()){
-            prodLine.get().start();
+        int lineId      = Integer.parseInt(args[0]);
+        String localIp  = args[1];
+        int localPort   = Integer.parseInt(args[2]);
 
-            Thread.sleep(20000);
+        var prodLine = ProductionLine.init(
+            lineId, 
+            localIp,
+            localPort,
+            "127.0.0.1", 
+            8080
+        );
 
-            prodLine.get().pause();
+        if (prodLine.isPresent()) {
+            ProductionLine pl = prodLine.get();
 
-            Thread.sleep(2000);
+            pl.slidingWindowProcessorThread.subscribe(pl);
+            
+            RicartMutualExclusionPeer ricartPeer = (RicartMutualExclusionPeer) pl.mutualExclusionPeer;
+            ricartPeer.subscribe(pl);
 
-            prodLine.get().start();
 
-            Thread.sleep(10000);
+            try {
+                Server grpcServer = ServerBuilder.forPort(localPort)
+                        .addService(new CalibrationServiceImpl(ricartPeer))
+                        .build();
 
-            prodLine.get().stop();
-        }else{
+                grpcServer.start();
+                System.out.println("[gRPC SERVER] Listening on port: " + localPort + "...");
+                
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    System.out.println("Shutdown local grpc...");
+                    grpcServer.shutdown();
+                }));
+
+            } catch (IOException e) {
+                System.err.println("Can't start grpc server at port:  " + localPort);
+                e.printStackTrace();
+                return;
+            }
+
+            pl.start();
+
+            while (true) {
+                Thread.sleep(20000);
+            }
+            
+        } else {
             System.out.println("Error initiating production line");
         }
     }

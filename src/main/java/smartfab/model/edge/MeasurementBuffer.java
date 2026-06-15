@@ -54,10 +54,11 @@ public class MeasurementBuffer implements Buffer{
          * and the buffer will be: m = [5,6,7,8,]
          */
         this.measurements.clear();
-        this.measurements.addAll(this.measurements.subList((CLEAR_SIZE-1), MAX_SIZE));
+        this.measurements.addAll(copy.subList((CLEAR_SIZE-1), (MAX_SIZE-1)));
 
         //Thread that clear the buffer will notify the sensor thread that will be in waiting for the insertion of the new measurememnt
         notifyAll();
+
         return copy;
     }
 
