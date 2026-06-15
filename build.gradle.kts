@@ -60,3 +60,22 @@ protobuf {
 tasks.test {
     useJUnitPlatform()
 }
+
+tasks.register<JavaExec>("runProductionLine") {
+    group = "application"
+    description = "runs a production line"    
+    mainClass.set("smartfab.model.edge.ProductionLine")
+    classpath = sourceSets["main"].runtimeClasspath
+    
+    if (project.hasProperty("args")) {
+        val arguments = project.property("args") as String
+        args(arguments.split(" "))
+    }
+}
+
+tasks.register<JavaExec>("runAdminServer") {
+    group = "application"
+    description = "runs the spring admin server"    
+    mainClass.set("smartfab.SpringServer")
+    classpath = sourceSets["main"].runtimeClasspath
+}

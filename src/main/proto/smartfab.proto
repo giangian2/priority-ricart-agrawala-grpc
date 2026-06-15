@@ -1,24 +1,18 @@
 syntax = "proto3";
 package smartfab;
 
-enum ResponseStatus{
-  OK    = 0;
-  ERROR = 1;
-  EMPTY = 2;
-}
-
 message Empty{}
 
 message CalibrationRequest{
-  int32 lineId      = 1;
+  int32 lineId          = 1;
   int32 priority        = 2;
-  double timestamp       = 3;
+  double timestamp      = 3;
   string snederAddress  = 4;
   int32 senderPort      = 5;
 }
 
 message P2PJoinRequest{
-  int32 lineId     = 1;
+  int32 lineId          = 1;
   string snederAddress  = 2;
   int32 senderPort      = 3;
 }
