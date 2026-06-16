@@ -20,6 +20,12 @@ public interface Peer {
      * 
      * @param peer
      */
+    void sendJoinRequestToAll(PeerInfo peer);
+    
+    /**
+     * 
+     * @param peer
+     */
     void addPeer(PeerInfo peer);
 
     /**
@@ -44,7 +50,7 @@ public interface Peer {
      * 
      * @param request
      */
-    void sendRequest(CalibrationRequest request);
+    void sendRequest(CalibrationRequest request, int receiverId);
 
     /**
      * 
@@ -54,9 +60,9 @@ public interface Peer {
 
     /**
      * 
-     * @param targetLineId
+     * @param receiverId
      */
-    void sendGrant(int targetLineId);
+    void sendGrant(CalibrationRequest request, int receiverId);
 
     /**
      * 

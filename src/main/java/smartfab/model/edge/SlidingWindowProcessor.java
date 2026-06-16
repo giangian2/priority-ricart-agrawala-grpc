@@ -1,5 +1,6 @@
 package smartfab.model.edge;
 
+import java.util.Date;
 import java.util.List;
 
 import smartfab.model.events.CriticalStatusEvent;
@@ -10,28 +11,28 @@ import smartfab.model.events.ProductionLineEvent;
 /**
  * @author Gianluca Bianhci
  * 
- *         This processor has the purpose to read from the
- *         {@link smartfab.model.edge.MeasurementBuffer} any
- *         new window, compute the averegage and push the new meeasurement to
- *         the {@link smartfab.model.edge.AveragesBuffer}.
- *         It use the busy-waiting pattern
+ * This processor will read measurements from the
+ * {@link smartfab.model.edge.MeasurementBuffer},
+ * compute the averegage and push the new meeasurement to
+ * the {@link smartfab.model.edge.AveragesBuffer}.
+ * It use the busy-waiting pattern.
  */
 public class SlidingWindowProcessor extends Thread {
 
     private static final double THRESHOLD = 80.0;
 
-    private final Buffer rawBuffer;
-    private final AveragesBuffer averagesBuffer;
-    private volatile boolean stopped;
-    private final Object pauseLock;
+    private final Buffer            rawBuffer;
+    private final AveragesBuffer    averagesBuffer;
+    private volatile boolean        stopped;
+    private final Object            pauseLock;
 
     private final EventDispatcher<ProductionLineEvent> dispatcher = new EventDispatcher<>();
 
     public SlidingWindowProcessor(Buffer rawBuffer, AveragesBuffer averagesBuffer) {
-        this.rawBuffer = rawBuffer;
+        this.rawBuffer      = rawBuffer;
         this.averagesBuffer = averagesBuffer;
-        this.stopped = false;
-        this.pauseLock = new Object();
+        this.stopped        = false;
+        this.pauseLock      = new Object();
     }
 
     public void stopProcessing() {
@@ -88,7 +89,7 @@ public class SlidingWindowProcessor extends Thread {
 
             if (avg > THRESHOLD) {
                 System.out.printf("[CRITICAL] ** CRITICAL SECTION ** avg = %.2f > %.0f%n", avg, THRESHOLD);
-                this.notifyEvent(new CriticalStatusEvent(0, 0, 1));
+                this.notifyEvent(new CriticalStatusEvent(new Date().getTime(), avg));
             }
         }
     }

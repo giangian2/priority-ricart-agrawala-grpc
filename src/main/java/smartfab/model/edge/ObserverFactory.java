@@ -23,15 +23,19 @@ public class ObserverFactory {
         return new StreamObserver<Empty>(){
 
             @Override
-            public void onNext(Empty value) {}
+            public void onNext(Empty value) {
+            }
 
             @Override
             public void onError(Throwable t) {
+                System.out.println("STREAM ERROR:");
                 t.printStackTrace();
             }
 
             @Override
-            public void onCompleted() {}
+            public void onCompleted() {
+                System.out.println("COMPLETED");
+            }
         };
     }
 }

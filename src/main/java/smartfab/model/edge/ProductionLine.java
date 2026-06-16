@@ -5,41 +5,35 @@ import java.util.Optional;
 
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
-import smartfab.Smartfab.P2PJoinRequest;
 import smartfab.algorithms.ricart.GrpcPeer;
 import smartfab.algorithms.ricart.MutualExclusionAlgorithm;
+import smartfab.algorithms.ricart.Peer;
 import smartfab.algorithms.ricart.PeerInfo;
 import smartfab.algorithms.ricart.RicartMutualExclusionPeer;
 import smartfab.model.events.CalibrationGrantEvent;
 import smartfab.model.events.CalibrationTerminatedEvent;
 import smartfab.model.events.CriticalStatusEvent;
-import smartfab.model.events.EventListener;
 import smartfab.model.events.ProductionLineEvent;
-
+import smartfab.model.events.EventListener;
 
 /**
  * @author Gianluca Bianchi
- * 
- * Production Line class for manage any aspect of the SMARTFAB production lines.
- * This class needs: 
- *      {@link smartfab.algorithms.ricart.MutualExclusionAlgorithm}
- *      {@link smartfab.model.edge.MonitoringSensor}
- *      {@link smartfab.model.edge.SlidingWindowProcessor}
- *      {@link smartfab.model.edge.AveragesConsumer}
- *      {@link smartfab.model.edge.AveragesBuffer}
- *      {@link smartfab.model.edge.MeasurementBuffer}
+ *
+ * Production Line class for managing any aspect of the SMARTFAB
+ * production lines.
  */
-public class ProductionLine implements EventListener<ProductionLineEvent>{
+public class ProductionLine implements EventListener<ProductionLineEvent> {
 
-    public static enum ProductionLineStatus{
+    public static enum ProductionLineStatus {
         RUNNINING,
         WAITING_FOR_CALIBRATION,
         CALIBRATION
     };
-    
-    private final int                       lineId;
 
-    private final MutualExclusionAlgorithm  mutualExclusionPeer;
+    private final PeerInfo                  peerInfo;
+
+    private final MutualExclusionAlgorithm  algorithm;
+    private final Peer                      transport;
     private final MonitoringSensor          sensorThread;
     private final SlidingWindowProcessor    slidingWindowProcessorThread;
     private final AveragesConsumer          averagesConsumerThread;
@@ -48,151 +42,123 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
     private final AveragesBuffer            averagesBuffer;
 
     public ProductionLine(int lineId,
-                            MutualExclusionAlgorithm mutualExclusionPeer,
-                            MonitoringSensor sensorThread,
-                            SlidingWindowProcessor slidingWindowProcessor,
-                            AveragesConsumer averagesConsumerThread,
-                            MeasurementBuffer measurementBuffer,
-                            AveragesBuffer  averagesBuffer){
+            String lineAddress,
+            int linePort,
+            MutualExclusionAlgorithm algorithm,
+            Peer transport,
+            MonitoringSensor sensorThread,
+            SlidingWindowProcessor slidingWindowProcessor,
+            AveragesConsumer averagesConsumerThread,
+            MeasurementBuffer measurementBuffer,
+            AveragesBuffer averagesBuffer) {
 
-        this.lineId                         = lineId;
-        this.mutualExclusionPeer            = mutualExclusionPeer;
-        this.sensorThread                   = sensorThread;
-        this.slidingWindowProcessorThread   = slidingWindowProcessor;
-        this.averagesConsumerThread         = averagesConsumerThread;
-        this.measurementBuffer              = measurementBuffer;
-        this.averagesBuffer                 = averagesBuffer;
+        this.peerInfo = new PeerInfo(lineId, lineAddress, linePort);
+        this.algorithm = algorithm;
+        this.transport = transport;
+        this.sensorThread = sensorThread;
+        this.slidingWindowProcessorThread = slidingWindowProcessor;
+        this.averagesConsumerThread = averagesConsumerThread;
+        this.measurementBuffer = measurementBuffer;
+        this.averagesBuffer = averagesBuffer;
     }
 
     /**
-     * @TODO THINK ABOUT USING BUILDER PATTERN
-     * This method will perform the setup of the production line starting by creating the following resources:
-     *  - Buffers for storing measurements and agreggated-data
-     *  - Threads for sensor and for data-acquisition pipline and mqtt pub
-     * 
-     * In order to configure the {@link smartfab.algorithms.ricart.GrpcPeer} we need to call
-     * the administration server with address and port retreived from input.
-     * 
-     * The administration server will return a list of other peers in the P2P system and these connection
-     * will be added to the current peer instance.
-     * @param lineId
-     * @param adminServerAddress
-     * @param adminServerPort
-     * @return 
+     * Composition root: creates the transport, registers the known peers and
+     * wires the mutual exclusion algorithm on top of it.
      */
-    public static Optional<ProductionLine> init(int lineId, String lineAddress, int linePort, String adminServerAddress, int adminServerPort){
-        //Initialize shared buffers
-        var averagesBuffer          = new AveragesBuffer();
-        var measurementBuffer       = new MeasurementBuffer();
-        //Initialize core threads (needs buffers already created)
-        var sensorThread            = new MonitoringSensor(measurementBuffer);
-        var slidingWindowProcessor  = new SlidingWindowProcessor(measurementBuffer, averagesBuffer);
-        var AveragesConsumer        = new AveragesConsumer(lineId, averagesBuffer);
-        var peer                    = new RicartMutualExclusionPeer(new GrpcPeer(), lineId);
-        var peerRestClient          = new PeerRestClient("http://"+adminServerAddress+":"+adminServerPort);
+    public static Optional<ProductionLine> init(int lineId, String lineAddress, int linePort,
+            String adminServerAddress, int adminServerPort) {
+
+        var averagesBuffer = new AveragesBuffer();
+        var measurementBuffer = new MeasurementBuffer();
+        var sensorThread = new MonitoringSensor(measurementBuffer);
+        var slidingWindowProcessor = new SlidingWindowProcessor(measurementBuffer, averagesBuffer);
+        var averagesConsumer = new AveragesConsumer(lineId, averagesBuffer);
+
+        var transport = new GrpcPeer();
+        var algorithm = new RicartMutualExclusionPeer(transport, lineId);
+        var peerRestClient = new PeerRestClient("http://" + adminServerAddress + ":" + adminServerPort);
 
         var otherPeers = peerRestClient.registerPeer(new PeerInfo(lineId, lineAddress, linePort));
-
-        otherPeers.stream().forEach((p)->{
-            peer.addPeer(new PeerInfo(p.getID(),p.getAddress(),p.getPort()));
-        });
-        
-        /**
-         * @todo
-         * 
-         * Move this method to the mutual exclsion peer class,
-         * in this phase we need only to create the stubs.
-         * Than the production line will have a method to announce 
-         * the presence that will call the "send P2P join request"
-         * method and send via GRP the Join Request.
-         * Also rename the method joinPeer to OnP2PJoinRequestReceived() ...
-         */
-        peer.getAllPeersStub().forEach((ps)->{
-            ps.getStub().joinP2P(P2PJoinRequest.newBuilder()
-                    .setLineId(lineId)
-                    .setSnederAddress(lineAddress)
-                    .setSenderPort(linePort)
-                    .build(), new ObserverFactory().emptyStreamObserver());
-        });
+        otherPeers.forEach(p -> transport.addPeer(new PeerInfo(p.getID(), p.getAddress(), p.getPort())));
 
         return Optional.of(new ProductionLine(lineId,
-            peer, 
-            sensorThread, 
-            slidingWindowProcessor, 
-            AveragesConsumer, 
-            measurementBuffer, 
-            averagesBuffer));
+                lineAddress,
+                linePort,
+                algorithm,
+                transport,
+                sensorThread,
+                slidingWindowProcessor,
+                averagesConsumer,
+                measurementBuffer,
+                averagesBuffer));
     }
 
-    /**
-     * This method starts all the core threads (sensor, sliding window and mqtt publisher)
-     * and the {@link smartfab.model.edge.CalibrationServiceImpl} grpc instance.
-     */
-    public void start(){
+    public void start() {
         this.startThreads();
     }
 
-    public void pause(){
+    public void pause() {
         this.pauseThreads();
         this.clearBuffers();
     }
 
-    public void stop(){
+    public void stop() {
         this.stopThreads();
-        this.clearBuffers(); 
+        this.clearBuffers();
     }
-    
-    
+
+    public void joinPeerNetwork() {
+        this.transport.sendJoinRequestToAll(peerInfo);
+    }
+
     @Override
     public void onEvent(ProductionLineEvent event) {
-        System.out.println("notify");
-        if(event instanceof CriticalStatusEvent){
+        if (event instanceof CriticalStatusEvent) {
             var ev = (CriticalStatusEvent) event;
             this.onCalibrationNeeded(ev.getCriticality());
         }
 
-        if(event instanceof CalibrationGrantEvent){
-            var ev = (CalibrationGrantEvent) event;
+        if (event instanceof CalibrationGrantEvent) {
             this.onCalibrationAcquired();
         }
 
-        if(event instanceof CalibrationTerminatedEvent){
-            var ev = (CalibrationTerminatedEvent) event;
+        if (event instanceof CalibrationTerminatedEvent) {
             this.onCalibrationTerminated();
         }
 
-        System.out.println("[PRODUCTION LINE] EVENT RECEIVED: "+event.getClass().toString());
+        System.out.println("[PRODUCTION LINE] EVENT RECEIVED: " + event.getClass().toString());
     }
 
-    private void clearBuffers(){
+    private void clearBuffers() {
         this.averagesBuffer.readAllAndClear();
         this.measurementBuffer.clear();
     }
 
-    private void pauseThreads(){
+    private void pauseThreads() {
         this.slidingWindowProcessorThread.stopProcessing();
         this.sensorThread.pauseMeasuring();
         this.averagesConsumerThread.stopConsuming();
     }
 
-    private void startThreads(){
+    private void startThreads() {
         this.sensorThread.startMeasuring();
         this.slidingWindowProcessorThread.startProcessing();
         this.averagesConsumerThread.startConsuming();
     }
 
-    private void stopThreads(){
+    private void stopThreads() {
 
     }
 
-    private void onCalibrationNeeded(int criticality){
+    private void onCalibrationNeeded(double criticality) {
         this.pause();
-        this.mutualExclusionPeer.requestCalibration(lineId, criticality);
+        this.algorithm.requestCalibration(criticality);
     }
 
-    private void onCalibrationAcquired(){
+    private void onCalibrationAcquired() {
         try {
-            System.out.println("LINE "+this.lineId+": CALIBRATING");
+            System.out.println("LINE " + this.peerInfo.getID() + ": CALIBRATING");
             Thread.sleep(6000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -201,9 +167,9 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
         this.onCalibrationTerminated();
     }
 
-    private void onCalibrationTerminated(){
-        System.out.println("LINE "+this.lineId+": Calibration ended");
-        this.mutualExclusionPeer.releaseCalibration();
+    private void onCalibrationTerminated() {
+        System.out.println("LINE " + this.peerInfo.getID() + ": Calibration ended");
+        this.algorithm.releaseCalibration();
         this.start();
     }
 
@@ -213,39 +179,33 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
             return;
         }
 
-        int lineId      = Integer.parseInt(args[0]);
-        String localIp  = args[1];
-        int localPort   = Integer.parseInt(args[2]);
+        int lineId = Integer.parseInt(args[0]);
+        String localIp = args[1];
+        int localPort = Integer.parseInt(args[2]);
 
-        var prodLine = ProductionLine.init(
-            lineId, 
-            localIp,
-            localPort,
-            "127.0.0.1", 
-            8080
-        );
+        var prodLine = ProductionLine.init(lineId, localIp, localPort, "127.0.0.1", 8080);
 
         if (prodLine.isPresent()) {
             ProductionLine pl = prodLine.get();
 
             pl.slidingWindowProcessorThread.subscribe(pl);
-            
-            RicartMutualExclusionPeer ricartPeer = (RicartMutualExclusionPeer) pl.mutualExclusionPeer;
-            ricartPeer.subscribe(pl);
-
+            pl.algorithm.subscribe(pl);
 
             try {
                 Server grpcServer = ServerBuilder.forPort(localPort)
-                        .addService(new CalibrationServiceImpl(ricartPeer))
+                        .addService(new CalibrationServiceImpl(pl.algorithm))
                         .build();
 
                 grpcServer.start();
                 System.out.println("[gRPC SERVER] Listening on port: " + localPort + "...");
-                
+
                 Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                     System.out.println("Shutdown local grpc...");
                     grpcServer.shutdown();
+                    pl.stop();
                 }));
+
+                pl.joinPeerNetwork();
 
             } catch (IOException e) {
                 System.err.println("Can't start grpc server at port:  " + localPort);
@@ -258,7 +218,7 @@ public class ProductionLine implements EventListener<ProductionLineEvent>{
             while (true) {
                 Thread.sleep(20000);
             }
-            
+
         } else {
             System.out.println("Error initiating production line");
         }

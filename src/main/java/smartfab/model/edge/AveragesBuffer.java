@@ -8,7 +8,7 @@ import java.util.List;
  * 
  * This buffer is used to store the sliding windows that the 
  * {@link smartfab.model.edge.SlidingWindowProcessor} has already processed.
- * This buffer will not implement the "BUSY WAITING" pattern: the consumer
+ * It will not implement the "BUSY WAITING" pattern: the consumer
  * thread of this buffer will be in particulary: {@link smartfab.model.edge.AveragesConsumer}
  * that will not "busy-wait" an average to be pushed into the the buffer, but it
  * consumes it every 10 seconds without blockng calls.

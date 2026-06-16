@@ -1,10 +1,6 @@
 package smartfab.algorithms.ricart;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.Deque;
-import java.util.List;
 
 import smartfab.Smartfab.CalibrationRequest;
 import smartfab.model.events.CalibrationGrantEvent;
@@ -14,156 +10,151 @@ import smartfab.model.events.ProductionLineEvent;
 
 /**
  * @author Gianluca Bianchi
- * 
- *         The role of this class is to implement Ricart Argwalla Algorithm
- *         {@link https://en.wikipedia.org/wiki/Ricart%E2%80%93Agrawala_algorithm}
- *         It will use the {@link smartfab.algorithms.ricart.Peer} class to send
- *         messages to other peers.
- *         All the methods must be synchronized because the instance will
- *         receive multiple calls by multiple threads (each for one "peer stub")
- * 
+ *
+ * Ricart-Agrawala mutual exclusion implementation.
+ * {@link https://en.wikipedia.org/wiki/Ricart%E2%80%93Agrawala_algorithm}
+ *
+ * This class no longer extends the transport ({@link GrpcPeer}) it
+ * OWNS a {@link Peer}, so the algorithm can be tested with an in-memory transport.
+ * The mutable state is delegated to {@link RequestContext},
+ * {@link GrantTracker} and {@link DeferredGrants}; the reactions are
+ * delegated to the {@link PeerState} objects..
+ * All callbacks are synchronized because they are invoked concurrently
+ * by multiple gRPC server threads.
  */
-public class RicartMutualExclusionPeer extends GrpcPeer implements MutualExclusionAlgorithm {
+public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, RicartContext {
 
-    public static enum PeerStatus {
-        /**
-         * The peer has alreay announced itself through a HELLO messge but others peer
-         * doesn't responded with ACK yet
-         */
-        NOT_CONNECTED,
-        /**
-         * Does it's work and don't needs to access the critical resource (the
-         * calibration state)
-         */
-        IDLE,
-        /**
-         * Waits to access te criticla zone for calibration process
-         */
-        WAITING,
-        /**
-         * Calibration
-         */
-        CALIBRATING
-    }
-
-    private PeerStatus              status;
-    private final int               peerId;
-    private final int               criticality;
-    private final Deque<Integer>    defferedQueue;
-    private final List<Integer>     ackedRequests;
-
-    //DIspatchers
+    private final int                                   peerId;
+    private final Peer                                  transport;
     private final EventDispatcher<ProductionLineEvent>  dispatcher;
 
-    public RicartMutualExclusionPeer(Peer peer, int peerId) {
-        this.status         = RicartMutualExclusionPeer.PeerStatus.IDLE;
-        this.peerId         = peerId;
-        this.criticality    = 0;
-        this.defferedQueue  = new ArrayDeque<>();
-        this.ackedRequests  = new ArrayList<>();
-        this.dispatcher     = new EventDispatcher<>();
-    }
+    private final RequestContext                        request;
+    private final GrantTracker                          grants;
+    private final DeferredGrants                        deferred;
 
-    public void subscribe(EventListener<ProductionLineEvent> listener) {
-        dispatcher.subscribe(listener);
-    }
+    private PeerState                                   state;
 
-    public PeerStatus getStatus() {
-        return this.status;
+    public RicartMutualExclusionPeer(Peer transport, int peerId) {
+        this.transport  = transport;
+        this.peerId     = peerId;
+        this.dispatcher = new EventDispatcher<>();
+        this.request    = new RequestContext();
+        this.grants     = new GrantTracker();
+        this.deferred   = new DeferredGrants();
+        this.state      = new IdleState();
     }
 
     @Override
-    public synchronized void requestCalibration(int lineId, double criticality) {
+    public void subscribe(EventListener<ProductionLineEvent> listener) {
+        this.dispatcher.subscribe(listener);
+    }
 
-        System.out.println("LINE "+this.peerId+": Request Calibration");
+    @Override
+    public synchronized void requestCalibration(double criticality) {
+        System.out.println("LINE " + this.peerId + ": Request Calibration");
 
-        //If the distributed production line system has only one peer (the current)
-        if(this.getAllPeers().size() <= 0){
+        this.request.open(criticality, new Date().getTime());
+        this.grants.reset();
 
-            this.status = PeerStatus.CALIBRATING;
-            this.dispatcher.notify(new CalibrationGrantEvent(lineId, new Date().getTime()));
+        if (this.transport.getAllPeers().isEmpty()) {
+            this.state = new CalibratingState();
+            notifyCalibrationAcquired(this.peerId);
             return;
         }
 
-        this.sendRequestToAll(CalibrationRequest.newBuilder()
-                .setLineId(lineId)
-                .setPriority((int) criticality)
+        this.transport.sendRequestToAll(CalibrationRequest.newBuilder()
+                .setLineId(this.peerId)
+                .setPriority(criticality)
                 .setTimestamp(new Date().getTime())
                 .build());
 
-        // Change internal STATUS
-        this.status = PeerStatus.WAITING;
-
-        System.out.println("LINE "+this.peerId+": WAITING");
+        this.state = new WaitingState();
+        System.out.println("LINE " + this.peerId + ": WAITING");
     }
 
     @Override
     public synchronized void releaseCalibration() {
-        this.status = RicartMutualExclusionPeer.PeerStatus.IDLE;
-        this.sendReleaseToAll(this.peerId);
+        this.state = new IdleState();
+        this.grants.reset();
+        this.deferred.releaseAll(targetId -> this.transport.sendGrant(buildGrant(), targetId));
     }
 
     @Override
-    public synchronized void onRequestReceived(int senderId, double senderCriticality, String senderAddress,
-            int senderPort) {
-
-        // If the peer is in IDEL it will respon OK to all the incoming calibration
-        // requests
-        if (this.status.equals(RicartMutualExclusionPeer.PeerStatus.IDLE)) {
-            this.sendGrant(senderId);
-        }
-
-        if (this.status.equals(RicartMutualExclusionPeer.PeerStatus.CALIBRATING)) {
-            /**
-             * @todo
-             */
-        }
-
-        // Insead of using Lamport based on Logical Clock
-        if (this.status.equals(RicartMutualExclusionPeer.PeerStatus.WAITING)) {
-            if (senderCriticality > this.criticality) {
-                this.sendGrant(senderId);
-            } else if (senderCriticality < this.criticality) {
-                this.defferedQueue.add(senderId);
-            } else {
-                if (senderId < this.peerId) {
-                    this.sendGrant(senderId);
-                } else {
-                    this.defferedQueue.add(senderId);
-                }
-            }
-        }
+    public synchronized void onRequestReceived(int senderId, double senderCriticality, String senderAddress, int senderPort) {
+        this.state.onRequest(this, senderId, senderCriticality);
     }
 
     @Override
     public synchronized void onGrantReceived(int senderId) {
+        this.state.onGrant(this, senderId);
+    }
 
-        if (this.status.equals(RicartMutualExclusionPeer.PeerStatus.WAITING)) {
-            this.defferedQueue.add(senderId);
+    @Override
+    public synchronized void onJoinPeerReceived(int senderId, String senderAddress, int senderPort) {
+        System.out.println("NEW PEER JOINED THE NETWORK: " + senderId + "[" + senderAddress + ":" + senderPort + "]");
+        this.transport.addPeer(new PeerInfo(senderId, senderAddress, senderPort));
 
-            if (this.checkGrant()) {
-                this.status = RicartMutualExclusionPeer.PeerStatus.CALIBRATING;
-                this.dispatcher.notify(new CalibrationGrantEvent(senderId, new Date().getTime()));
-            }
+        /* If we are competing, make the newcomer aware of our pending request so
+         * it can grant us and we still reach the quorum.
+         */
+        if (this.state instanceof WaitingState) {
+            this.transport.sendRequest(CalibrationRequest.newBuilder()
+                    .setLineId(this.peerId)
+                    .setPriority(this.request.criticality())
+                    .build(), senderId);
         }
     }
 
     @Override
-    public synchronized void onReleaseReceived(int senderId) {
-        throw new UnsupportedOperationException("Unimplemented method 'onReleaseReceived'");
-    }
-
-    private synchronized boolean checkGrant() {
-        return (this.getAllPeers().size() - 1) == this.ackedRequests.stream().distinct().count();
+    public int peerId() {
+        return this.peerId;
     }
 
     @Override
-    public synchronized void joinPeer(int senderId, String senderAddress, int senderPort) {
-        System.out.println("NEW PEER JOINED THE NETWORK: "+senderId+ "["+senderAddress+":"+senderPort+"]");
-        this.addPeer(new PeerInfo(senderId, senderAddress, senderPort));
+    public double currentCriticality() {
+        return this.request.criticality();
+    }
 
-        if(this.getStatus().equals(RicartMutualExclusionPeer.PeerStatus.WAITING)){
-            this.sendGrant(senderId);
-        }
+    @Override
+    public synchronized int otherPeerCount() {
+        return this.transport.getAllPeers().size();
+    }
+
+    @Override
+    public synchronized void grantTo(int targetPeerId) {
+        this.transport.sendGrant(buildGrant(), targetPeerId);
+    }
+
+    @Override
+    public synchronized void deferGrant(int targetPeerId) {
+        this.deferred.defer(targetPeerId);
+    }
+
+    @Override
+    public synchronized void recordGrant(int fromPeerId) {
+        this.grants.record(fromPeerId);
+    }
+
+    @Override
+    public synchronized boolean hasFullQuorum() {
+        return this.grants.hasQuorum(otherPeerCount());
+    }
+
+    @Override
+    public synchronized void enterCriticalSection(int triggeringPeerId) {
+        this.state = new CalibratingState();
+        notifyCalibrationAcquired(triggeringPeerId);
+    }
+
+    private void notifyCalibrationAcquired(int triggeringPeerId) {
+        final long now = new Date().getTime();
+        new Thread(() -> this.dispatcher.notify(new CalibrationGrantEvent(triggeringPeerId, now))).start();
+    }
+
+    private CalibrationRequest buildGrant() {
+        return CalibrationRequest.newBuilder()
+                .setLineId(this.peerId)
+                .setPriority(0)
+                .build();
     }
 }

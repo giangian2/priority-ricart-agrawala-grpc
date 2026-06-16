@@ -6,15 +6,15 @@ import java.util.List;
 public class EventDispatcher<T> {
     private final List<EventListener<T>> listeners = new ArrayList<>();
 
-    public void subscribe(EventListener<T> listener) {
+    public synchronized void subscribe(EventListener<T> listener) {
         listeners.add(listener);
     }
 
-    public void unsubscribe(EventListener<T> listener) {
+    public synchronized void unsubscribe(EventListener<T> listener) {
         listeners.remove(listener);
     }
 
-    public void notify(T event) {
+    public synchronized void notify(T event) {
         for (EventListener<T> listener : listeners) {
             listener.onEvent(event);
         }

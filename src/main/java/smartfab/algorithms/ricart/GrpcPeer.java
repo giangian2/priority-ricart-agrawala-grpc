@@ -10,6 +10,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import smartfab.CalibrationServiceGrpc;
 import smartfab.Smartfab.CalibrationRequest;
+import smartfab.Smartfab.P2PJoinRequest;
 import smartfab.model.edge.ObserverFactory;
 
 public class GrpcPeer implements Peer{
@@ -22,74 +23,74 @@ public class GrpcPeer implements Peer{
         this.obaserverFactory   = new ObserverFactory();
     }
 
-    public void addPeer(PeerInfo peer){
+    public synchronized void addPeer(PeerInfo peer){
         ManagedChannel channel = ManagedChannelBuilder.forAddress(peer.getAddress(), peer.getPort())
-        .usePlaintext()
-        .build();
+                .usePlaintext()
+                .build();
         //In this scenario we have to instantiate an async communication
         var asyncStub = CalibrationServiceGrpc.newStub(channel);
         this.peers.put(peer, new PeerStub(channel, asyncStub));
+        System.out.println("PEER CONNECTIONS:");
+        this.peers.keySet()
+                .stream()
+                .map((pi)-> pi.getID())
+                .forEach(System.out::println);
     }
 
-    public void removePeer(int peerId){
+    public synchronized void removePeer(int peerId){
         throw new UnsupportedOperationException("PEER REMOVAL NOT SUPPORTED YET!");
     }
 
     @Override
-    public List<PeerInfo> getAllPeers() {
+    public synchronized List<PeerInfo> getAllPeers() {
         return this.peers.keySet()
                 .stream()
                 .collect(Collectors.toList());
     }
 
     @Override
-    public List<PeerStub> getAllPeersStub(){
+    public synchronized List<PeerStub> getAllPeersStub(){
         return this.peers.values()
                 .stream()
                 .collect(Collectors.toList());
     }
 
     @Override
-    public void sendRequestToAll(CalibrationRequest request) {
-        this.peers.values()
-                .stream()
-                .forEach((peerStub) -> new Thread(){
-                    @Override
-                    public void run(){
-                        peerStub.getStub().requestCalibration(request, obaserverFactory.emptyStreamObserver());
-                    }
-                }.start());
+    public synchronized void sendRequestToAll(CalibrationRequest request) {
+        new Thread(()->{
+            this.peers.values()
+                    .stream()
+                    .forEach((peerStub) -> peerStub.getStub()
+                            .requestCalibration(request, obaserverFactory.emptyStreamObserver()));
+        }).start();
     }
 
     @Override
-    public void sendGrant(int targetLineId) {
-        if(this.getStubById(targetLineId).isEmpty()){
-            throw new IllegalStateException("The Peer was not able to send a grpc grant message to line id: "+targetLineId);
+    public synchronized void sendGrant(CalibrationRequest req, int receiverId) {
+        if(this.getStubById(receiverId).isEmpty()){
+            throw new IllegalStateException("The Peer was not able to send a grpc grant message to line id: "+ receiverId);
         }
 
-        var targetLineStub = this.getStubById(targetLineId).get();
-        targetLineStub.getStub().grantCalibrationAccess(CalibrationRequest.newBuilder()
-                .setLineId(targetLineId)
-                .setPriority(0)
-                .build(), this.obaserverFactory.emptyStreamObserver());
+        var targetLineStub = this.getStubById(receiverId).get();
+
+        new Thread(()->{
+            targetLineStub.getStub().grantCalibrationAccess(req, this.obaserverFactory.emptyStreamObserver());
+        }).start();
     }
 
     @Override
-    public void sendReleaseToAll(int myId) {
-        this.peers.values()
-                .stream()
-                .forEach((peerStub) -> new Thread(){
-                    @Override
-                    public void run(){
-                        peerStub.getStub().grantCalibrationAccess(CalibrationRequest.newBuilder()
+    public synchronized void sendReleaseToAll(int myId) {
+        new Thread(()->{
+                this.peers.values()
+                        .stream()
+                        .forEach((peerStub) -> peerStub.getStub().grantCalibrationAccess(CalibrationRequest.newBuilder()
                                 .setLineId(myId)
                                 .setPriority(0)
-                                .build(), obaserverFactory.emptyStreamObserver());
-                    }
-                }.start());
+                                .build(), obaserverFactory.emptyStreamObserver()));
+        }).start();
     }
 
-    private Optional<PeerStub> getStubById(int id){
+    private synchronized Optional<PeerStub> getStubById(int id){
         return this.peers.entrySet().stream()
                 .filter((e) -> e.getKey().getID() == id)
                 .map((e) -> e.getValue())
@@ -97,12 +98,27 @@ public class GrpcPeer implements Peer{
     }
 
     @Override
-    public void sendRequest(CalibrationRequest request) {
-        if(this.getStubById(request.getLineId()).isEmpty()){
+    public synchronized void sendRequest(CalibrationRequest request, int receiverId) {
+        if(this.getStubById(receiverId).isEmpty()){
             throw new IllegalStateException("The Peer was not able to send a grpc grant message to line id: "+ request.getLineId());
         }
 
         var targetLineStub = this.getStubById(request.getLineId()).get();
-        targetLineStub.getStub().grantCalibrationAccess(request, this.obaserverFactory.emptyStreamObserver());
+        
+        new Thread(()->{
+                targetLineStub.getStub().requestCalibration(request, this.obaserverFactory.emptyStreamObserver());
+        }).start();
+
+    }
+
+    @Override
+    public synchronized void sendJoinRequestToAll(PeerInfo peer) {
+        this.getAllPeersStub().forEach((ps)->{
+            ps.getStub().joinP2P(P2PJoinRequest.newBuilder()
+                    .setLineId(peer.getID())
+                    .setSnederAddress(peer.getAddress())
+                    .setSenderPort(peer.getPort())
+                    .build(), this.obaserverFactory.emptyStreamObserver());
+        });
     }
 }
