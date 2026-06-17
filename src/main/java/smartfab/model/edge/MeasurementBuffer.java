@@ -9,8 +9,8 @@ import java.util.List;
 public class MeasurementBuffer implements Buffer{
 
     private final List<Measurement> measurements;
-    private final static int        MAX_SIZE = 8;
-    private final static int        CLEAR_SIZE = 4;
+    private final static int        WIN_SIZE = 8;
+    private final static int        WIN_OVERLAP = 4;
 
     public MeasurementBuffer(){
         this.measurements = new ArrayList<>();
@@ -20,7 +20,7 @@ public class MeasurementBuffer implements Buffer{
     public synchronized void addMeasurement(Measurement m) {
 
         //Wait to insert the new measurement until the consumer thread will process the window contained in the buffer
-        while(measurements.size() >= MAX_SIZE){
+        while(measurements.size() >= WIN_SIZE){
             try {
                 wait();
             } catch (InterruptedException e) {
@@ -31,13 +31,11 @@ public class MeasurementBuffer implements Buffer{
         this.measurements.add(m);
         //release all blocked threads
         notifyAll();
-
-        System.out.println("Added measurement "+m.value());
     }
 
     @Override
     public synchronized List<Measurement> readAllAndClear() {
-        while(measurements.size() < MAX_SIZE){
+        while(measurements.size() < WIN_SIZE){
             try {
                 //wait for new measurements inserted (the sliding window processor will receive a complete window)
                 wait();
@@ -54,7 +52,7 @@ public class MeasurementBuffer implements Buffer{
          * and the buffer will be: m = [5,6,7,8,]
          */
         this.measurements.clear();
-        this.measurements.addAll(copy.subList((CLEAR_SIZE-1), (MAX_SIZE-1)));
+        this.measurements.addAll(copy.subList((WIN_OVERLAP-1), (WIN_SIZE-1)));
 
         //Thread that clear the buffer will notify the sensor thread that will be in waiting for the insertion of the new measurememnt
         notifyAll();

@@ -1,5 +1,6 @@
 package smartfab.http.contorller;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import smartfab.algorithms.ricart.PeerInfo;
@@ -11,11 +12,8 @@ import java.util.List;
 @RequestMapping("/api/peers")
 public class PeerController {
 
-    private final PeerService peerService;
-
-    public PeerController(PeerService peerService) {
-        this.peerService = peerService;
-    }
+    @Autowired
+    private PeerService peerService;
 
     @PostMapping
     public ResponseEntity<List<PeerInfo>> registerPeer(@RequestBody PeerInfo peer) {

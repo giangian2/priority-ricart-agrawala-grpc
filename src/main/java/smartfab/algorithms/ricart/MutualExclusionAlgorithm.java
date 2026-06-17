@@ -6,14 +6,11 @@ import smartfab.model.events.ProductionLineEvent;
 /**
  * @author Gianluca Bianchi
  *
- * Interface for modelling a mutual exclusion algorithm used to
- * coordinate the "grant" of the calibration state across the distributed 
- * production lines.
+ *      Interface for modelling a mutual exclusion algorithm used to
+ *      coordinate the "grant" of the calibration state across the distributed 
+ *      production lines.
  *
- * NOTE: Ricart and Agrawala has no explicit release message (release is an 
- * implicit grant). Algorithms that DO use explicit release messages can declare it
- * through a dedicated sub-interface, so no implementation is forced to throw
- * UnsupportedOperationException.
+ *      NOTE: Ricart and Agrawala has no explicit release message (release is an implicit grant).
  */
 public interface MutualExclusionAlgorithm {
 
@@ -40,16 +37,16 @@ public interface MutualExclusionAlgorithm {
      * 
      * @param senderId
      * @param senderCriticality
-     * @param senderAddress
-     * @param senderPort
+     * @param round
      */
-    void onRequestReceived(int senderId, double senderCriticality, String senderAddress, int senderPort);
+    void onRequestReceived(int senderId, double senderCriticality, int round);
 
     /**
      * 
      * @param senderId
+     * @param round
      */
-    void onGrantReceived(int senderId);
+    void onGrantReceived(int senderId, int round);
 
     /**
      * Register a listener for the production-line events emitted by the algorithm.

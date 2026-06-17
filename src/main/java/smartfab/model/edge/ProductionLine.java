@@ -19,8 +19,8 @@ import smartfab.model.events.EventListener;
 /**
  * @author Gianluca Bianchi
  *
- * Production Line class for managing any aspect of the SMARTFAB
- * production lines.
+ *         Production Line class for managing any aspect of the SMARTFAB
+ *         production lines.
  */
 public class ProductionLine implements EventListener<ProductionLineEvent> {
 
@@ -31,13 +31,11 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     };
 
     private final PeerInfo                  peerInfo;
-
     private final MutualExclusionAlgorithm  algorithm;
     private final Peer                      transport;
     private final MonitoringSensor          sensorThread;
     private final SlidingWindowProcessor    slidingWindowProcessorThread;
     private final AveragesConsumer          averagesConsumerThread;
-
     private final MeasurementBuffer         measurementBuffer;
     private final AveragesBuffer            averagesBuffer;
 
@@ -52,14 +50,14 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
             MeasurementBuffer measurementBuffer,
             AveragesBuffer averagesBuffer) {
 
-        this.peerInfo = new PeerInfo(lineId, lineAddress, linePort);
-        this.algorithm = algorithm;
-        this.transport = transport;
-        this.sensorThread = sensorThread;
-        this.slidingWindowProcessorThread = slidingWindowProcessor;
-        this.averagesConsumerThread = averagesConsumerThread;
-        this.measurementBuffer = measurementBuffer;
-        this.averagesBuffer = averagesBuffer;
+        this.peerInfo                       = new PeerInfo(lineId, lineAddress, linePort);
+        this.algorithm                      = algorithm;
+        this.transport                      = transport;
+        this.sensorThread                   = sensorThread;
+        this.slidingWindowProcessorThread   = slidingWindowProcessor;
+        this.averagesConsumerThread         = averagesConsumerThread;
+        this.measurementBuffer              = measurementBuffer;
+        this.averagesBuffer                 = averagesBuffer;
     }
 
     /**
@@ -69,15 +67,14 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     public static Optional<ProductionLine> init(int lineId, String lineAddress, int linePort,
             String adminServerAddress, int adminServerPort) {
 
-        var averagesBuffer = new AveragesBuffer();
-        var measurementBuffer = new MeasurementBuffer();
-        var sensorThread = new MonitoringSensor(measurementBuffer);
-        var slidingWindowProcessor = new SlidingWindowProcessor(measurementBuffer, averagesBuffer);
-        var averagesConsumer = new AveragesConsumer(lineId, averagesBuffer);
-
-        var transport = new GrpcPeer();
-        var algorithm = new RicartMutualExclusionPeer(transport, lineId);
-        var peerRestClient = new PeerRestClient("http://" + adminServerAddress + ":" + adminServerPort);
+        var averagesBuffer          = new AveragesBuffer();
+        var measurementBuffer       = new MeasurementBuffer();
+        var sensorThread            = new MonitoringSensor(measurementBuffer);
+        var slidingWindowProcessor  = new SlidingWindowProcessor(measurementBuffer, averagesBuffer);
+        var averagesConsumer        = new AveragesConsumer(lineId, averagesBuffer);
+        var transport               = new GrpcPeer();
+        var algorithm               = new RicartMutualExclusionPeer(transport, lineId);
+        var peerRestClient          = new PeerRestClient("http://" + adminServerAddress + ":" + adminServerPort);
 
         var otherPeers = peerRestClient.registerPeer(new PeerInfo(lineId, lineAddress, linePort));
         otherPeers.forEach(p -> transport.addPeer(new PeerInfo(p.getID(), p.getAddress(), p.getPort())));

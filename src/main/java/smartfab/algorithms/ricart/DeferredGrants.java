@@ -1,31 +1,45 @@
 package smartfab.algorithms.ricart;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.function.IntConsumer;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
- * Queue of peers whose calibration requests have been deferred because the
- * local peer had priority. On release every deferred peer is granted access.
+ * @author Gianluca Bianchi
+ * 
+ *      THREAD-SAFE queue of peers whose calibration requests have been deferred because the
+ *      local peer had priority. On release every deferred peer is granted access
  */
 final class DeferredGrants {
 
-    private final Deque<Integer> queue = new ArrayDeque<>();
+    private final Map<Integer,Integer> queue;
 
-    void defer(int peerId) {
-        this.queue.add(peerId);
+    public DeferredGrants(){
+        this.queue = new HashMap<>();
     }
 
     /**
-     * Sends a grant to every deferred peer (in FIFO order) and empties the queue.
+     * Add the peer to the deferred queue
+     * @param peerId
      */
-    void releaseAll(IntConsumer grantSender) {
-        while (!this.queue.isEmpty()) {
-            grantSender.accept(this.queue.poll());
+    public synchronized void defer(int peerId, int round) {
+        this.queue.put(peerId, round);
+    }
+
+    /**
+     * Sends a grant to every deferred peer (in FIFO order) and empties the queue
+     * @param grantSender
+     */
+    public synchronized void releaseAll(BiConsumer<Integer,Integer> grantSender) {
+        for (var key : this.queue.keySet()) {
+            grantSender.accept(key, this.queue.get(key));
         }
     }
 
-    void clear() {
+    /**
+     * Clears the deferred queue
+     */
+    public synchronized void clear() {
         this.queue.clear();
     }
 }

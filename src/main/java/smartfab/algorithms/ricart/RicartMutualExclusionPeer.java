@@ -11,28 +11,25 @@ import smartfab.model.events.ProductionLineEvent;
 /**
  * @author Gianluca Bianchi
  *
- * Ricart-Agrawala mutual exclusion implementation.
- * {@link https://en.wikipedia.org/wiki/Ricart%E2%80%93Agrawala_algorithm}
+ *         Ricart-Agrawala mutual exclusion implementation.
+ *         {@link https://en.wikipedia.org/wiki/Ricart%E2%80%93Agrawala_algorithm}
  *
- * This class no longer extends the transport ({@link GrpcPeer}) it
- * OWNS a {@link Peer}, so the algorithm can be tested with an in-memory transport.
- * The mutable state is delegated to {@link RequestContext},
- * {@link GrantTracker} and {@link DeferredGrants}; the reactions are
- * delegated to the {@link PeerState} objects..
- * All callbacks are synchronized because they are invoked concurrently
- * by multiple gRPC server threads.
+ *         This class no longer extends the transport ({@link GrpcPeer}) it
+ *         OWNS a {@link Peer}, so the algorithm can be tested with an in-memory
+ *         transport.
  */
 public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, RicartContext {
 
-    private final int                                   peerId;
-    private final Peer                                  transport;
+    private volatile int    round;
+    private PeerState       state;
+
+    private final int               peerId;
+    private final Peer              transport;
+    private final RequestContext    request;
+    private final GrantTracker      grants;
+    private final DeferredGrants    deferred;
+
     private final EventDispatcher<ProductionLineEvent>  dispatcher;
-
-    private final RequestContext                        request;
-    private final GrantTracker                          grants;
-    private final DeferredGrants                        deferred;
-
-    private PeerState                                   state;
 
     public RicartMutualExclusionPeer(Peer transport, int peerId) {
         this.transport  = transport;
@@ -42,10 +39,11 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
         this.grants     = new GrantTracker();
         this.deferred   = new DeferredGrants();
         this.state      = new IdleState();
+        this.round      = 0;
     }
 
     @Override
-    public void subscribe(EventListener<ProductionLineEvent> listener) {
+    public synchronized void subscribe(EventListener<ProductionLineEvent> listener) {
         this.dispatcher.subscribe(listener);
     }
 
@@ -53,7 +51,13 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
     public synchronized void requestCalibration(double criticality) {
         System.out.println("LINE " + this.peerId + ": Request Calibration");
 
-        this.request.open(criticality, new Date().getTime());
+        /**
+         * INCREMENT THE ROUND AT EACH NEW CALIBRATION REQUEST
+         */
+        this.round++;
+        System.out.println("ROUND: "+ this.round);
+
+        this.request.open(criticality, this.round);
         this.grants.reset();
 
         if (this.transport.getAllPeers().isEmpty()) {
@@ -65,7 +69,7 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
         this.transport.sendRequestToAll(CalibrationRequest.newBuilder()
                 .setLineId(this.peerId)
                 .setPriority(criticality)
-                .setTimestamp(new Date().getTime())
+                .setTimestamp(this.request.round())
                 .build());
 
         this.state = new WaitingState();
@@ -76,17 +80,29 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
     public synchronized void releaseCalibration() {
         this.state = new IdleState();
         this.grants.reset();
-        this.deferred.releaseAll(targetId -> this.transport.sendGrant(buildGrant(), targetId));
+        this.deferred.releaseAll((targetId,round) -> this.transport.sendGrant(CalibrationRequest.newBuilder()
+                .setLineId(this.peerId)
+                .setTimestamp(round)
+                .setPriority(0)
+                .build(), targetId));
     }
 
     @Override
-    public synchronized void onRequestReceived(int senderId, double senderCriticality, String senderAddress, int senderPort) {
-        this.state.onRequest(this, senderId, senderCriticality);
+    public synchronized void onRequestReceived(int senderId, double senderCriticality, int round) {
+        this.state.onRequest(this, senderId, senderCriticality, round);
     }
 
     @Override
-    public synchronized void onGrantReceived(int senderId) {
-        this.state.onGrant(this, senderId);
+    public synchronized void onGrantReceived(int senderId, int round) {
+        /**
+         * The grant handler is invoked only when the grant mathes the current peer's round.
+         * It is foundamental to guarantee mutual exclusion in async systems
+         */
+        if(this.request.round() == round){
+            this.state.onGrant(this, senderId, round);
+        }else{
+            System.out.println("ROUND DOES NOT MATCH!");
+        }
     }
 
     @Override
@@ -94,12 +110,16 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
         System.out.println("NEW PEER JOINED THE NETWORK: " + senderId + "[" + senderAddress + ":" + senderPort + "]");
         this.transport.addPeer(new PeerInfo(senderId, senderAddress, senderPort));
 
-        /* If we are competing, make the newcomer aware of our pending request so
+        /*
+         * If we are competing, make the newcomer aware of our pending request so
          * it can grant us and we still reach the quorum.
+         * WE CAN'T REUSE THE requerstCalibration() METHOD BECAUSE IT CLEARS 
+         * THE RECEIVED GRANTS CACHE
          */
         if (this.state instanceof WaitingState) {
             this.transport.sendRequest(CalibrationRequest.newBuilder()
                     .setLineId(this.peerId)
+                    .setTimestamp(this.request.round())
                     .setPriority(this.request.criticality())
                     .build(), senderId);
         }
@@ -111,33 +131,37 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
     }
 
     @Override
-    public double currentCriticality() {
+    public synchronized double currentCriticality() {
         return this.request.criticality();
     }
 
     @Override
-    public synchronized int otherPeerCount() {
+    public int otherPeerCount() {
         return this.transport.getAllPeers().size();
     }
 
     @Override
-    public synchronized void grantTo(int targetPeerId) {
-        this.transport.sendGrant(buildGrant(), targetPeerId);
+    public void grantTo(int targetPeerId, int round) {
+        this.transport.sendGrant(CalibrationRequest.newBuilder()
+                .setLineId(this.peerId)
+                .setTimestamp(round)
+                .setPriority(0)
+                .build(), targetPeerId);
     }
 
     @Override
-    public synchronized void deferGrant(int targetPeerId) {
-        this.deferred.defer(targetPeerId);
+    public void deferGrant(int targetPeerId, int round) {
+        this.deferred.defer(targetPeerId, round);
     }
 
     @Override
-    public synchronized void recordGrant(int fromPeerId) {
+    public void recordGrant(int fromPeerId) {
         this.grants.record(fromPeerId);
     }
 
     @Override
-    public synchronized boolean hasFullQuorum() {
-        return this.grants.hasQuorum(otherPeerCount());
+    public boolean hasFullQuorum() {
+        return this.grants.hasQuorum(this.otherPeerCount());
     }
 
     @Override
@@ -146,15 +170,21 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
         notifyCalibrationAcquired(triggeringPeerId);
     }
 
-    private void notifyCalibrationAcquired(int triggeringPeerId) {
-        final long now = new Date().getTime();
-        new Thread(() -> this.dispatcher.notify(new CalibrationGrantEvent(triggeringPeerId, now))).start();
+    @Override
+    public synchronized void restart(){
+        System.out.println("RESTART CALIBRATION REQUEST");
+        this.requestCalibration(this.currentCriticality());
     }
 
-    private CalibrationRequest buildGrant() {
-        return CalibrationRequest.newBuilder()
-                .setLineId(this.peerId)
-                .setPriority(0)
-                .build();
+    /**
+     * 
+     * @param triggeringPeerId
+     */
+    private void notifyCalibrationAcquired(int triggeringPeerId) {
+        final long now = new Date().getTime();
+        // new Thread(() -> this.dispatcher.notify(new
+        // CalibrationGrantEvent(triggeringPeerId, now))).start();
+        this.dispatcher.notify(new CalibrationGrantEvent(triggeringPeerId, now));
     }
+
 }

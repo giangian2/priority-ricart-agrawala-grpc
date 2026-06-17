@@ -4,23 +4,38 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * This class tracks the grants collected for the current request and decides whether the
- * quorum has been reached. This is the single place where the Ricart-Agrawala
- * quorum rule lives.
+ * @author Gianluca Bianchi
+ * 
+ *      THREAD-SAFE grant tracker for caching ACKED calibration requests
  */
 final class GrantTracker {
 
-    private final Set<Integer> acked = new HashSet<>();
+    private final Set<Integer>  acked;
 
-    void reset() {
+    public GrantTracker(){
+        this.acked      = new HashSet<>();
+    }
+
+    /**
+     * Clears the received grants cache
+     */
+    public synchronized void reset() {
         this.acked.clear();
     }
 
-    void record(int peerId) {
+    /**
+     * 
+     * @param peerId
+     */
+    public synchronized void record(int peerId) {
         this.acked.add(peerId);
     }
 
-    int count() {
+    /**
+     * 
+     * @return
+     */
+    public synchronized int count() {
         return this.acked.size();
     }
 
@@ -28,7 +43,7 @@ final class GrantTracker {
      * @param requiredGrants number of OTHER peers (self excluded)
      * @return true when grants from all the other peers have been collected
      */
-    boolean hasQuorum(int requiredGrants) {
+    public synchronized boolean hasQuorum(int requiredGrants) {
         return this.acked.size() >= requiredGrants;
     }
 }

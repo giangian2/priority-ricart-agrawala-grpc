@@ -3,6 +3,9 @@ package smartfab.algorithms.ricart;
 import io.grpc.ManagedChannel;
 import smartfab.CalibrationServiceGrpc.CalibrationServiceStub;
 
+/**
+ * @author Gianluca Bianchi
+ */
 public class PeerStub {
     private final ManagedChannel            channel;
     private final CalibrationServiceStub    stub;

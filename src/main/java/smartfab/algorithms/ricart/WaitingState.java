@@ -1,29 +1,27 @@
 package smartfab.algorithms.ricart;
 
-/**
- * The peer is competing for the critical section. Incoming requests are ordered
- * against the local request using the total order (criticality, then id):
- * higher criticality wins; on a tie the lower id wins.
- */
+
 final class WaitingState implements PeerState {
 
     @Override
-    public void onRequest(RicartContext ctx, int senderId, double senderCriticality) {
+    public void onRequest(RicartContext ctx, int senderId, double senderCriticality, int round) {
         double mine = ctx.currentCriticality();
 
         if (senderCriticality > mine) {
-            ctx.grantTo(senderId); 
+            ctx.grantTo(senderId,round); 
+            ctx.restart();
         } else if (senderCriticality < mine) {
-            ctx.deferGrant(senderId);
+            ctx.deferGrant(senderId, round);
         } else if (senderId < ctx.peerId()) {
-            ctx.grantTo(senderId); 
+            ctx.grantTo(senderId, round); 
+            ctx.restart();
         } else {
-            ctx.deferGrant(senderId);
+            ctx.deferGrant(senderId, round);
         }
     }
 
     @Override
-    public void onGrant(RicartContext ctx, int senderId) {
+    public void onGrant(RicartContext ctx, int senderId, int round) {
         ctx.recordGrant(senderId);
         if (ctx.hasFullQuorum()) {
             ctx.enterCriticalSection(senderId);

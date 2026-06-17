@@ -1,18 +1,14 @@
 package smartfab.algorithms.ricart;
 
-/**
- * The peer does not need the critical section: it grants every incoming
- * request immediately and ignores grants.
- */
 final class IdleState implements PeerState {
 
     @Override
-    public void onRequest(RicartContext ctx, int senderId, double senderCriticality) {
-        ctx.grantTo(senderId);
+    public void onRequest(RicartContext ctx, int senderId, double senderCriticality, int round) {
+        ctx.grantTo(senderId,round);
     }
 
     @Override
-    public void onGrant(RicartContext ctx, int senderId) {
+    public void onGrant(RicartContext ctx, int senderId, int roound) {
     }
 
     @Override

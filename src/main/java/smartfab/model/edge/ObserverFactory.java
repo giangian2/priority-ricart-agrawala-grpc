@@ -28,13 +28,11 @@ public class ObserverFactory {
 
             @Override
             public void onError(Throwable t) {
-                System.out.println("STREAM ERROR:");
                 t.printStackTrace();
             }
 
             @Override
             public void onCompleted() {
-                System.out.println("COMPLETED");
             }
         };
     }

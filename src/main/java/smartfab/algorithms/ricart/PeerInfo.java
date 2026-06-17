@@ -1,5 +1,8 @@
 package smartfab.algorithms.ricart;
 
+/**
+ * @author Gianluca Bianchi
+ */
 public class PeerInfo {
     private final int       ID;
     private final String    address;
@@ -11,14 +14,25 @@ public class PeerInfo {
         this.address    = address;
     }
 
+    /**
+     * 
+     * @return
+     */
     public int getID(){
         return this.ID;
     }
 
+    /**
+     * 
+     * @return
+     */
     public String getAddress(){
         return this.address;
     }
 
+    /**
+     * @return
+     */
     public int getPort(){
         return this.port;
     }

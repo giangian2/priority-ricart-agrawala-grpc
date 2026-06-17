@@ -5,7 +5,7 @@ message Empty{}
 
 message CalibrationRequest{
   int32 lineId          = 1;
-  double priority        = 2;
+  double priority       = 2;
   double timestamp      = 3;
   string snederAddress  = 4;
   int32 senderPort      = 5;

@@ -6,8 +6,8 @@ import smartfab.algorithms.ricart.MutualExclusionAlgorithm;
 /**
  * @author Gianluca bianchi
  *
- * gRPC entry point: depends only on the {@link MutualExclusionAlgorithm}
- * abstraction, not on a concrete peer implementation.
+ *      gRPC entry point: depends only on the {@link MutualExclusionAlgorithm}
+ *      abstraction, not on a concrete peer implementation.
  */
 public class CalibrationServiceImpl extends CalibrationServiceImplBase {
 
@@ -22,8 +22,9 @@ public class CalibrationServiceImpl extends CalibrationServiceImplBase {
             io.grpc.stub.StreamObserver<smartfab.Smartfab.Empty> responseObserver) {
 
         System.out.println("[gRPC Server] Received request calibration from " + request.getLineId());
-        this.peer.onRequestReceived(request.getLineId(), request.getPriority(),
-                request.getSnederAddress(), request.getSenderPort());
+        new Thread(()->{
+            this.peer.onRequestReceived(request.getLineId(), request.getPriority(), (int) request.getTimestamp());
+        }).start();
         responseObserver.onNext(smartfab.Smartfab.Empty.getDefaultInstance());
         responseObserver.onCompleted();
     }
@@ -33,7 +34,9 @@ public class CalibrationServiceImpl extends CalibrationServiceImplBase {
             io.grpc.stub.StreamObserver<smartfab.Smartfab.Empty> responseObserver) {
 
         System.out.println("[gRPC Server] Received grant from " + request.getLineId());
-        this.peer.onGrantReceived(request.getLineId());
+        new Thread(()->{
+            this.peer.onGrantReceived(request.getLineId(), (int) request.getTimestamp());
+        }).start();
         responseObserver.onNext(smartfab.Smartfab.Empty.getDefaultInstance());
         responseObserver.onCompleted();
     }
@@ -43,8 +46,9 @@ public class CalibrationServiceImpl extends CalibrationServiceImplBase {
             io.grpc.stub.StreamObserver<smartfab.Smartfab.Empty> responseObserver) {
 
         System.out.println("[gRPC Server] Received join request from " + request.getLineId());
-        this.peer.onJoinPeerReceived(request.getLineId(),
-                request.getSnederAddress(), request.getSenderPort());
+        new Thread(()->{
+            this.peer.onJoinPeerReceived(request.getLineId(),request.getSnederAddress(), request.getSenderPort());
+        }).start();
         responseObserver.onNext(smartfab.Smartfab.Empty.getDefaultInstance());
         responseObserver.onCompleted();
     }

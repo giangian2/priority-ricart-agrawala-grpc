@@ -7,7 +7,7 @@ import smartfab.http.respository.MeasurementRepository;
 import smartfab.model.edge.Measurement;
 
 import java.util.List;
-import java.util.Collections;
+import java.util.stream.Collectors;
 
 @Service
 public class MeasurementService {
@@ -24,8 +24,9 @@ public class MeasurementService {
     }
 
     public List<Measurement> getAllMeasurementsSorted() {
-        List<Measurement> measurements = measurementRepository.findAll();
-        Collections.sort(measurements); 
-        return measurements;
+        return measurementRepository.findAll()
+                .stream()
+                .sorted()
+                .collect(Collectors.toList());
     }
 }
