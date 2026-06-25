@@ -31,9 +31,9 @@ final class DeferredGrants {
      * @param grantSender
      */
     public synchronized void releaseAll(BiConsumer<Integer,Integer> grantSender) {
-        for (var key : this.queue.keySet()) {
-            grantSender.accept(key, this.queue.get(key));
-        }
+        this.queue.entrySet()
+                .stream()
+                .forEach((entry)->grantSender.accept(entry.getKey(), entry.getValue()));
     }
 
     /**

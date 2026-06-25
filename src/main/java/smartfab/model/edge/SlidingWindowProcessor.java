@@ -11,11 +11,11 @@ import smartfab.model.events.ProductionLineEvent;
 /**
  * @author Gianluca Bianhci
  * 
- * This processor will read measurements from the
- * {@link smartfab.model.edge.MeasurementBuffer},
- * compute the averegage and push the new meeasurement to
- * the {@link smartfab.model.edge.AveragesBuffer}.
- * It use the busy-waiting pattern.
+ *      This thired reads measurements from the
+ *      {@link smartfab.model.edge.MeasurementBuffer} and
+ *      computes the averegage and push the new meeasurement to
+ *      the {@link smartfab.model.edge.AveragesBuffer}.
+ *      BUSY-WAITING PATTERN
  */
 public class SlidingWindowProcessor extends Thread {
 

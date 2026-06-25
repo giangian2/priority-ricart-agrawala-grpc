@@ -61,6 +61,7 @@ tasks.test {
     useJUnitPlatform()
 }
 
+//try to run it directly without re-executing the gradle pipe
 tasks.register<JavaExec>("runProductionLine") {
     group = "application"
     description = "runs a production line"    
@@ -73,9 +74,18 @@ tasks.register<JavaExec>("runProductionLine") {
     }
 }
 
+//try to run it directly without re-executing the gradle pipe
 tasks.register<JavaExec>("runAdminServer") {
     group = "application"
     description = "runs the spring admin server"    
     mainClass.set("smartfab.SpringServer")
     classpath = sourceSets["main"].runtimeClasspath
+}
+
+//ECTRACT DI RUNTIME EFFECTIVE CLASSPATH!!!!!
+val printClasspath by tasks.registering {
+    doLast {
+        val classpath = sourceSets.main.get().runtimeClasspath.asPath
+        println(classpath)
+    }
 }

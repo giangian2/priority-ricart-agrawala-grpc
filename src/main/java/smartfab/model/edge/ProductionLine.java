@@ -63,27 +63,30 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     /**
      * Composition root: creates the transport, registers the known peers and
      * wires the mutual exclusion algorithm on top of it.
+     * 
+     * @todo
+     * WE NEED TO PASS THE RICART MUTUAL EXCLUSION PEER (AND SO ALSO THE GRPC PEER) AS PARAMS TO THIS METHOD.
+     * THEY NEEDS TO BE USED BEFORE THE PRODUCTION LINE INITIALIZATION IN ORDER TO START THE GRPC SERVER
      */
     public static Optional<ProductionLine> init(int lineId, String lineAddress, int linePort,
-            String adminServerAddress, int adminServerPort) {
+            String adminServerAddress, int adminServerPort, Peer transportPeer) {
 
         var averagesBuffer          = new AveragesBuffer();
         var measurementBuffer       = new MeasurementBuffer();
         var sensorThread            = new MonitoringSensor(measurementBuffer);
         var slidingWindowProcessor  = new SlidingWindowProcessor(measurementBuffer, averagesBuffer);
         var averagesConsumer        = new AveragesConsumer(lineId, averagesBuffer);
-        var transport               = new GrpcPeer();
-        var algorithm               = new RicartMutualExclusionPeer(transport, lineId);
+        var algorithm               = new RicartMutualExclusionPeer(transportPeer, lineId);
         var peerRestClient          = new PeerRestClient("http://" + adminServerAddress + ":" + adminServerPort);
 
         var otherPeers = peerRestClient.registerPeer(new PeerInfo(lineId, lineAddress, linePort));
-        otherPeers.forEach(p -> transport.addPeer(new PeerInfo(p.getID(), p.getAddress(), p.getPort())));
+        otherPeers.forEach(p -> transportPeer.addPeer(new PeerInfo(p.getID(), p.getAddress(), p.getPort())));
 
         return Optional.of(new ProductionLine(lineId,
                 lineAddress,
                 linePort,
                 algorithm,
-                transport,
+                transportPeer,
                 sensorThread,
                 slidingWindowProcessor,
                 averagesConsumer,
@@ -110,7 +113,7 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     }
 
     @Override
-    public void onEvent(ProductionLineEvent event) {
+    public synchronized void onEvent(ProductionLineEvent event) {
         if (event instanceof CriticalStatusEvent) {
             var ev = (CriticalStatusEvent) event;
             this.onCalibrationNeeded(ev.getCriticality());
@@ -148,11 +151,18 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
 
     }
 
+    /**
+     * Called when the {@link smartfab.model.events.CriticalStatusEvent} is received
+     * @param criticality
+     */
     private void onCalibrationNeeded(double criticality) {
         this.pause();
         this.algorithm.requestCalibration(criticality);
     }
 
+    /**
+     * Called when the {@link smartfab.model.events.CalibrationGrantEvent} is received
+     */
     private void onCalibrationAcquired() {
         try {
             System.out.println("LINE " + this.peerInfo.getID() + ": CALIBRATING");
@@ -164,6 +174,9 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
         this.onCalibrationTerminated();
     }
 
+    /**
+     * Called when the {@link smartfab.model.events.CalibrationTerminatedEvent} is received
+     */
     private void onCalibrationTerminated() {
         System.out.println("LINE " + this.peerInfo.getID() + ": Calibration ended");
         this.algorithm.releaseCalibration();
@@ -179,8 +192,13 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
         int lineId = Integer.parseInt(args[0]);
         String localIp = args[1];
         int localPort = Integer.parseInt(args[2]);
+        
+        /**
+         * WE NEED TO START THE GRPC SERVER BEFORE THE PRODUCTION LINE
+         */
+        GrpcPeer peer       = new GrpcPeer();    
+        var prodLine        = ProductionLine.init(lineId, localIp, localPort, "127.0.0.1", 8080, peer);
 
-        var prodLine = ProductionLine.init(lineId, localIp, localPort, "127.0.0.1", 8080);
 
         if (prodLine.isPresent()) {
             ProductionLine pl = prodLine.get();
@@ -188,11 +206,11 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
             pl.slidingWindowProcessorThread.subscribe(pl);
             pl.algorithm.subscribe(pl);
 
-            try {
-                Server grpcServer = ServerBuilder.forPort(localPort)
-                        .addService(new CalibrationServiceImpl(pl.algorithm))
-                        .build();
+            Server grpcServer   = ServerBuilder.forPort(localPort)
+                .addService(new CalibrationServiceImpl(pl.algorithm))
+                .build();
 
+            try {
                 grpcServer.start();
                 System.out.println("[gRPC SERVER] Listening on port: " + localPort + "...");
 
