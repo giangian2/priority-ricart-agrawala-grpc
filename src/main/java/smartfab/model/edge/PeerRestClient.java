@@ -20,7 +20,7 @@ public class PeerRestClient {
     }
 
     public List<PeerInfo> registerPeer(PeerInfo newPeer) {
-        String url = baseUrl + "/api/peers";
+        String url = baseUrl + "/api/prodlines";
         HttpEntity<PeerInfo> requestEntity = new HttpEntity<>(newPeer);
 
         ResponseEntity<List<PeerInfo>> response = restTemplate.exchange(

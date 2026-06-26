@@ -1,10 +1,13 @@
 package smartfab.http.service;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+
 import smartfab.algorithms.ricart.PeerInfo;
 import smartfab.http.respository.PeerRepository;
 
@@ -21,10 +24,10 @@ public class PeerService {
     }
 
     public Entry<PeerInfo, String> getPeerStatus(int peerID){
-        return this.peerRepository.findById(new PeerInfo(peerID));
+        return this.peerRepository.findById(new PeerInfo(peerID,null,0));
     }
 
     public Map<PeerInfo,String> getAll(){
-        return this.getAll();
+        return new HashMap<PeerInfo, String>(this.peerRepository.findAll());
     }
 }

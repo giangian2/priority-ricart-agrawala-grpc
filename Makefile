@@ -17,15 +17,10 @@ run-mqtt-broker:
 	docker compose up -d
 
 run-pl-instance: build run-mqtt-broker
-	java -cp "$(CLASSES):$(CLASSPATH)" $(PL_MAIN) $(ARGS) &
+	java -cp "$(CLASSES):$(CLASSPATH)" $(PL_MAIN) $(ARGS)
 
 run-admin-server: build run-mqtt-broker
-	java -cp "$(CLASSES):$(CLASSPATH)" $(ADMIN_SERVER_MAIN) $(ARGS) &
+	java -cp "$(CLASSES):$(CLASSPATH)" $(ADMIN_SERVER_MAIN) $(ARGS)
 
 run-admin-client: build run-mqtt-broker
-	java -cp "$(CLASSES):$(CLASSPATH)" $(ADMIN_CLIENT_MAIN) $(ARGS) &
-
-stop-all:
-	@pkill -f "java.*$(PL_MAIN)" || echo "Fermate linee di produzione"
-	@pkill -f "java.*$(ADMIN_SERVER_MAIN)" || echo "Fermato admin server"
-	
+	java -cp "$(CLASSES):$(CLASSPATH)" $(ADMIN_CLIENT_MAIN) $(ARGS)

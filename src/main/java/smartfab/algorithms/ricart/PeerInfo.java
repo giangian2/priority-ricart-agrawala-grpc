@@ -14,12 +14,6 @@ public class PeerInfo {
         this.address    = address;
     }
 
-    public PeerInfo(int ID){
-        this.ID         = ID;
-        this.port       = 0;
-        this.address    = null;
-    }
-
     /**
      * 
      * @return

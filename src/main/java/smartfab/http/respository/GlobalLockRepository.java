@@ -1,8 +1,6 @@
 package smartfab.http.respository;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -44,8 +42,8 @@ public abstract class GlobalLockRepository<K, V> {
      * 
      * @return
      */
-    public synchronized List<V> findAll() {
-        return new ArrayList<>(storage.values());
+    public synchronized Map<K,V> findAll() {
+        return this.storage;
     }
 
     public synchronized void deleteById(K key) {
