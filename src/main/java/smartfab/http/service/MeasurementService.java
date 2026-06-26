@@ -15,11 +15,11 @@ public class MeasurementService {
     @Autowired
     private LinesMeasurementRepository measurementRepository;
 
-    public void addMeasurement(String p, Measurement m){
+    public void addMeasurement(int p, Measurement m){
         this.measurementRepository.save(p, Collections.singletonList(m));
     }
 
-    public List<Measurement> getLineMeasurements(String p){
+    public List<Measurement> getLineMeasurements(int p){
         return this.measurementRepository.findById(p);
     }
 }

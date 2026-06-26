@@ -1,5 +1,8 @@
 package smartfab.http.service;
 
+import java.util.Map;
+import java.util.Map.Entry;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import smartfab.algorithms.ricart.PeerInfo;
@@ -17,7 +20,11 @@ public class PeerService {
         this.peerRepository.save(peerInfo, DEFAULT_STATE);
     }
 
-    public String getPeerStatus(PeerInfo peerInfo){
-        return this.peerRepository.findById(peerInfo);
+    public Entry<PeerInfo, String> getPeerStatus(int peerID){
+        return this.peerRepository.findById(new PeerInfo(peerID));
+    }
+
+    public Map<PeerInfo,String> getAll(){
+        return this.getAll();
     }
 }

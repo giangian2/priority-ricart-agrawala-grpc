@@ -8,10 +8,10 @@ import org.springframework.stereotype.Repository;
 import smartfab.model.edge.Measurement;
 
 @Repository
-public class LinesMeasurementRepository extends DynamicLockRepository<String, List<Measurement>> {
+public class LinesMeasurementRepository extends DynamicLockRepository<Integer, List<Measurement>> {
 
     @Override
-    protected void addElement(String key, List<Measurement> value) {
+    protected void addElement(Integer key, List<Measurement> value) {
         this.storage.computeIfAbsent(key, k -> new ArrayList<>())
                     .addAll(value);
     }
