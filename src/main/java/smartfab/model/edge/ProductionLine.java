@@ -2,6 +2,7 @@ package smartfab.model.edge;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
@@ -166,7 +167,7 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     private void onCalibrationAcquired() {
         try {
             System.out.println("LINE " + this.peerInfo.getID() + ": CALIBRATING");
-            Thread.sleep(6000);
+            Thread.sleep(ThreadLocalRandom.current().nextInt(3000, 7001));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -214,20 +215,13 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
                 grpcServer.start();
                 System.out.println("[gRPC SERVER] Listening on port: " + localPort + "...");
 
-                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                    System.out.println("Shutdown local grpc...");
-                    grpcServer.shutdown();
-                    pl.stop();
-                }));
-
-                pl.joinPeerNetwork();
-
             } catch (IOException e) {
                 System.err.println("Can't start grpc server at port:  " + localPort);
                 e.printStackTrace();
                 return;
             }
 
+            pl.joinPeerNetwork();
             pl.start();
 
             while (true) {

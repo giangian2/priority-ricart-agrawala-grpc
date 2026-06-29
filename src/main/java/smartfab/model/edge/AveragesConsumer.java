@@ -1,6 +1,11 @@
 package smartfab.model.edge;
 
+import java.util.Date;
 import java.util.List;
+
+import org.eclipse.paho.client.mqttv3.MqttException;
+
+import smartfab.model.client.MqttClientManager;
 
 /**
  * @author Gianluca Bianchi
@@ -23,7 +28,7 @@ public class AveragesConsumer extends Thread {
 
     public void startConsuming(){
         synchronized(pauseLock){
-            paused = true;
+            paused = false;
         }
          
         if (getState() == State.NEW){
@@ -33,7 +38,7 @@ public class AveragesConsumer extends Thread {
 
     public void stopConsuming(){
         synchronized(pauseLock){
-            paused = false;
+            paused = true;
             pauseLock.notifyAll();
         }
     }
@@ -54,6 +59,16 @@ public class AveragesConsumer extends Thread {
                     System.out.printf("[Linea %d] Avgs computed %s%n", lineId, medie);
                 }
             
+                medie.stream()
+                    .forEach((avg)->{
+                        try {
+                            System.out.println("PUSHING");
+                            MqttClientManager.getInstance()
+                                    .publishMeasurement(lineId, new AverageMessage(lineId, avg, new Date().getTime()));
+                        } catch (MqttException e) {
+                            System.out.println("FAILED TO PUSH AVG TO MQTT");
+                        }
+                    });
                 Thread.sleep(INTERVAL_MS);
 
             } catch (InterruptedException e) {
