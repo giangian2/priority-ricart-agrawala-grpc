@@ -9,6 +9,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 
 
 import smartfab.model.edge.AverageMessage;
+import smartfab.util.JsonMapper;
 
 /**
  * @author Gianluca Bianchi
@@ -18,12 +19,14 @@ import smartfab.model.edge.AverageMessage;
  * of the Client ad the publish / subscibe operations.
  */
 public class MqttClientManager {
-    private static MqttClientManager instance;
-    private IMqttClient client;
+
+    private static final String         BROKER_URL = "tcp://localhost:1883";
+    private static MqttClientManager    instance;
+    private IMqttClient                 client;
 
     private MqttClientManager() {
         try {
-            client = new MqttClient("tcp://broker.hivemq.com:1883", MqttClient.generateClientId());
+            client = new MqttClient(BROKER_URL, MqttClient.generateClientId());
             MqttConnectOptions options = new MqttConnectOptions();
             options.setAutomaticReconnect(true);
             options.setCleanSession(true);
@@ -41,6 +44,8 @@ public class MqttClientManager {
 
     private void publish(String topic, String payload) throws MqttException {
         MqttMessage message = new MqttMessage(payload.getBytes());
+        message.setQos(0);
+        message.setRetained(false);
         client.publish(topic, message);
     }
 
@@ -49,8 +54,7 @@ public class MqttClientManager {
     }
 
     public void publishMeasurement(int productionLine, AverageMessage measurement) throws MqttException{
-        var msg = new Gson().toJson(measurement);
-        this.publish("/prodlines/"+productionLine+"/measurements",msg);
+        this.publish("/prodlines/"+productionLine+"/measurements",JsonMapper.serialize(measurement));
     }
 
     public void publishNewState(int productionLine, String newStatus) throws MqttException{
@@ -62,6 +66,6 @@ public class MqttClientManager {
     }
 
     public void subscribeAllProdLines(IMqttMessageListener listener) throws MqttException{
-        this.subscribe("prodlines/+/status", listener);
+        this.subscribe("/prodlines/+/status", listener);
     }
 }

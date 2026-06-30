@@ -38,6 +38,7 @@ public class SlidingWindowProcessor extends Thread {
     public void stopProcessing() {
         synchronized (pauseLock) {
             stopped = true;
+            pauseLock.notifyAll();
         }
 
     }

@@ -5,30 +5,29 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.springframework.stereotype.Service;
 
-import com.google.gson.Gson;
 
 import jakarta.annotation.PostConstruct;
 import smartfab.model.client.MqttClientManager;
 import smartfab.model.edge.AverageMessage;
+import smartfab.util.JsonMapper;
 
 @Service
 public class MqttSubscriberService {
     
     private final MqttClientManager mqtt;
-    private final Gson              decoder;
 
     public MqttSubscriberService(MqttClientManager mqtt){
-        this.mqtt       = mqtt;
-        this.decoder    = new Gson();
+        this.mqtt = mqtt;
     }
 
     @PostConstruct
     public void init() throws MqttException{
+        System.out.println("[MQTT] Subscribed succesfully");
         mqtt.subscribeAllMeasurements(new IMqttMessageListener() {
 
             @Override
             public void messageArrived(String topic, MqttMessage message) throws Exception {
-                var msg = decoder.fromJson(new String(message.getPayload()), AverageMessage.class);
+                var msg = JsonMapper.deserialize(new String(message.getPayload()), AverageMessage.class);
                 System.out.println("[MQTT] Received: "+msg.getAvg());
             }
             

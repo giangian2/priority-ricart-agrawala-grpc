@@ -29,6 +29,7 @@ public class AveragesConsumer extends Thread {
     public void startConsuming(){
         synchronized(pauseLock){
             paused = false;
+            pauseLock.notifyAll();
         }
          
         if (getState() == State.NEW){
