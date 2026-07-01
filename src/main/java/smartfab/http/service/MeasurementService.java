@@ -22,4 +22,9 @@ public class MeasurementService {
     public List<AverageMessage> getLineMeasurements(int p){
         return this.measurementRepository.findById(p);
     }
+
+    public List<AverageMessage> findLineMeasurements(int p, long from, long to){
+        return this.measurementRepository.findByLineIdAndWindow(p, from, to);
+    }
+
 }

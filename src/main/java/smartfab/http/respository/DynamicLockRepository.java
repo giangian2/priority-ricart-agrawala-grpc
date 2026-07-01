@@ -27,7 +27,7 @@ public abstract class DynamicLockRepository<K, V>{
      * @param key
      * @return Object lock for the key param
      */
-    private Object getLockFor(K key) {
+    protected Object getLockFor(K key) {
         synchronized (lockMap) {
             if (!lockMap.containsKey(key)) {
                 lockMap.put(key, new Object());

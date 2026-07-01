@@ -3,6 +3,7 @@ package smartfab.http.respository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 
 public abstract class GlobalLockRepository<K, V> {
     protected final Map<K, V> storage   = new HashMap<>();
@@ -11,30 +12,11 @@ public abstract class GlobalLockRepository<K, V> {
         storage.put(key, value);
     }
 
-    public synchronized Entry<K,V> findById(K key) {
-        V val = this.storage.get(key);
-        if(val == null){
-            return null;
-        }
-
-        return new Entry<K,V>() {
-
-            @Override
-            public K getKey() {
-                return key;
-            }
-
-            @Override
-            public V getValue() {
-                return val;
-            }
-
-            @Override
-            public V setValue(V arg0) {
-                throw new UnsupportedOperationException("You cannot change line status manually from result!");
-            }
-            
-        };
+    public synchronized Optional<Entry<K,V>> findById(K key) {
+        return this.storage.entrySet()
+                .stream()
+                .filter((entry)->entry.getKey().equals(key))
+                .findFirst();
     }
 
     /**

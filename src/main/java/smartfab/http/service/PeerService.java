@@ -29,13 +29,16 @@ public class PeerService {
          * exsists in repository. Without this guard the Map method
          * "save" will create the key if it not exsists.
          */
-        if(this.peerRepository.findById(peerInfo)!=null){
+        if(this.peerRepository.findById(peerInfo).isPresent()){
             this.peerRepository.save(peerInfo, status);
         }
     }
 
     public Entry<PeerInfo, String> getPeerStatus(int peerID){
-        return this.peerRepository.findById(new PeerInfo(peerID,null,0));
+        if(this.peerRepository.findById(new PeerInfo(peerID,null,0)).isEmpty()){
+            throw new IllegalStateException("Error 404: Peer: "+peerID+" not found!");
+        }
+        return this.peerRepository.findById(new PeerInfo(peerID, null, 0)).get();
     }
 
     public Map<PeerInfo,String> getAll(){

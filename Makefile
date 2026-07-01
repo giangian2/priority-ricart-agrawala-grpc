@@ -5,7 +5,7 @@ CLASSPATH 			= $(shell ./gradlew -q printClasspath)
 CLASSES 			= $(BUILD_DIR)/java/kotlin/main
 PL_MAIN				= smartfab.model.edge.ProductionLine
 ADMIN_SERVER_MAIN 	= smartfab.SpringServer
-ADMIN_CLIENT_MAIN	= smartfab.model.client.AdminClient
+ADMIN_CLIENT_MAIN	= smartfab.http.client.AdminCLI
 
 clean:
 	./gradlew clean
