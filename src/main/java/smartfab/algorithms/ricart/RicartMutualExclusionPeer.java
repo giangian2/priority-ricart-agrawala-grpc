@@ -2,11 +2,14 @@ package smartfab.algorithms.ricart;
 
 import java.util.Date;
 
+import org.eclipse.paho.client.mqttv3.MqttException;
+
 import smartfab.Smartfab.CalibrationRequest;
 import smartfab.model.events.CalibrationGrantEvent;
 import smartfab.model.events.EventDispatcher;
 import smartfab.model.events.EventListener;
 import smartfab.model.events.ProductionLineEvent;
+import smartfab.model.mqtt.MqttClientManager;
 
 /**
  * @author Gianluca Bianchi
@@ -42,6 +45,17 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
         this.round      = 0;
     }
 
+    private synchronized void setState(PeerState newState){
+        this.state = newState;
+        try {
+            MqttClientManager.getInstance()
+                .publishNewState(peerId, newState.name());
+        } catch (MqttException e) {
+            System.out.println("[MQTT] STATUS NOT PUBLSHED!");
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public synchronized void subscribe(EventListener<ProductionLineEvent> listener) {
         this.dispatcher.subscribe(listener);
@@ -61,7 +75,7 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
         this.grants.reset();
 
         if (this.transport.getAllPeers().isEmpty()) {
-            this.state = new CalibratingState();
+            this.setState(new CalibratingState());
             notifyCalibrationAcquired(this.peerId);
             return;
         }
@@ -72,13 +86,13 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
                 .setTimestamp(this.request.round())
                 .build());
 
-        this.state = new WaitingState();
+        this.setState(new WaitingState());
         System.out.println("LINE " + this.peerId + ": WAITING");
     }
 
     @Override
     public synchronized void releaseCalibration() {
-        this.state = new IdleState();
+        this.setState(new IdleState());
         this.grants.reset();
         this.deferred.releaseAll((targetId,round) -> this.transport.sendGrant(CalibrationRequest.newBuilder()
                 .setLineId(this.peerId)
@@ -166,7 +180,7 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
 
     @Override
     public synchronized void enterCriticalSection(int triggeringPeerId) {
-        this.state = new CalibratingState();
+        this.setState(new CalibratingState());
         notifyCalibrationAcquired(triggeringPeerId);
     }
 

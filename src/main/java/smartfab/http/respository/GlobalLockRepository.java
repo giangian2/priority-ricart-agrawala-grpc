@@ -14,7 +14,7 @@ public abstract class GlobalLockRepository<K, V> {
     public synchronized Entry<K,V> findById(K key) {
         V val = this.storage.get(key);
         if(val == null){
-            throw new IllegalStateException("ERROR 404 - Cannot find key: "+key.toString());
+            return null;
         }
 
         return new Entry<K,V>() {

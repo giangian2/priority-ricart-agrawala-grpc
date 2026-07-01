@@ -4,7 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import smartfab.http.respository.LinesMeasurementRepository;
-import smartfab.model.edge.Measurement;
+import smartfab.model.mqtt.AverageMessage;
 
 import java.util.Collections;
 import java.util.List;
@@ -15,11 +15,11 @@ public class MeasurementService {
     @Autowired
     private LinesMeasurementRepository measurementRepository;
 
-    public void addMeasurement(int p, Measurement m){
+    public void addMeasurement(int p, AverageMessage m){
         this.measurementRepository.save(p, Collections.singletonList(m));
     }
 
-    public List<Measurement> getLineMeasurements(int p){
+    public List<AverageMessage> getLineMeasurements(int p){
         return this.measurementRepository.findById(p);
     }
 }

@@ -43,5 +43,10 @@ public class PeerInfo {
         if (o == null || getClass() != o.getClass()) return false;
         var casted = (PeerInfo) o;
         return casted.getID() == this.ID;
-    }   
+    }
+
+    @Override
+    public int hashCode(){
+        return Integer.hashCode(this.ID);
+    }
 }

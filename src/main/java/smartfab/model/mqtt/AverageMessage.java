@@ -1,4 +1,4 @@
-package smartfab.model.edge;
+package smartfab.model.mqtt;
 
 public class AverageMessage {
     
@@ -12,7 +12,7 @@ public class AverageMessage {
         this.timestamp  = timestamp;
     }
 
-    public int getId(){
+    public int getLineId(){
         return this.lineId;
     }
 

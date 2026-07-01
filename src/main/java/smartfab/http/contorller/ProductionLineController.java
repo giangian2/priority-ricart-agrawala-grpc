@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import smartfab.algorithms.ricart.PeerInfo;
 import smartfab.http.service.MeasurementService;
 import smartfab.http.service.PeerService;
-import smartfab.model.edge.Measurement;
+import smartfab.model.mqtt.AverageMessage;
 
 
 @RestController
@@ -41,7 +41,7 @@ public class ProductionLineController {
     }
 
     @GetMapping("/{lineID}/measurements")
-    public ResponseEntity<List<Measurement>> getProductionLineMeasurements(@PathVariable int lineID){
+    public ResponseEntity<List<AverageMessage>> getProductionLineMeasurements(@PathVariable int lineID){
         return ResponseEntity.ok(measurementService.getLineMeasurements(lineID));
     }
 }

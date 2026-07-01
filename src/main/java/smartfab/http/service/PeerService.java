@@ -23,6 +23,17 @@ public class PeerService {
         this.peerRepository.save(peerInfo, DEFAULT_STATE);
     }
 
+    public void setPeerStatus(PeerInfo peerInfo, String status){
+        /**
+         * The status updated is done when the PeerInfo already
+         * exsists in repository. Without this guard the Map method
+         * "save" will create the key if it not exsists.
+         */
+        if(this.peerRepository.findById(peerInfo)!=null){
+            this.peerRepository.save(peerInfo, status);
+        }
+    }
+
     public Entry<PeerInfo, String> getPeerStatus(int peerID){
         return this.peerRepository.findById(new PeerInfo(peerID,null,0));
     }

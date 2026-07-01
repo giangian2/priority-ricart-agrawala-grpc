@@ -3,7 +3,7 @@ package smartfab.http.configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import smartfab.model.client.MqttClientManager;
+import smartfab.model.mqtt.MqttClientManager;
 
 @Configuration
 public class MqttConfig {

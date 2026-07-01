@@ -1,4 +1,4 @@
-package smartfab.model.client;
+package smartfab.model.mqtt;
 
 import org.eclipse.paho.client.mqttv3.IMqttClient;
 import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
@@ -7,8 +7,6 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 
-
-import smartfab.model.edge.AverageMessage;
 import smartfab.util.JsonMapper;
 
 /**
@@ -58,7 +56,7 @@ public class MqttClientManager {
     }
 
     public void publishNewState(int productionLine, String newStatus) throws MqttException{
-        this.publish("/prodlines/"+productionLine+"/status", newStatus);
+        this.publish("/prodlines/"+productionLine+"/status", JsonMapper.serialize(new ProdLineStatusMessage(productionLine, newStatus)));
     }
 
     public void subscribeAllMeasurements(IMqttMessageListener listener) throws MqttException{
