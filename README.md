@@ -70,7 +70,7 @@ Standard Ricart–Agrawala orders requests with a Lamport timestamp, which is
 carries a larger timestamp, so it is automatically placed *after* you.
 
 Criticality does not have this property. A line can grant permission while it is
-still in *Running* — it isn't competing yet, so it says "OK" to everyone — and
+still in *Running* it isn't competing yet, so it says "OK" to everyone and
 only later cross the threshold and ask for calibration with a *higher*
 criticality. At that point it has already handed out a permission that no longer
 reflects reality: it competes and wins, while the line it granted still holds
@@ -82,7 +82,7 @@ calibration together, breaking mutual exclusion.
 ![Why the restart is needed](res/restart.svg)
 
 When a waiting line receives a request from a *more critical* one, it yields:
-it grants the permission, then **restarts** its own attempt — it throws away the
+it grants the permission, then **restarts** its own attempt it throws away the
 permissions collected so far and broadcasts its request again. Because the stale
 grant is discarded, the line can no longer enter with it; it will regain access
 only after the more critical line releases the resource. This keeps a single
@@ -95,7 +95,7 @@ time.
 
 The restart alone is not enough on an asynchronous network, where a message can
 be delivered late. A permission granted "blindly" may arrive *after* the request
-that should have invalidated it — and it would be counted as valid again. To
+that should have invalidated it and it would be counted as valid again. To
 prevent this, every request carries a local **attempt number (round)**, which
 each grant echoes back. A line accepts a grant only if its round matches the
 current attempt; a grant carrying an old round is simply dropped. 
