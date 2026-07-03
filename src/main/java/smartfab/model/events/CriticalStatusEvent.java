@@ -12,5 +12,4 @@ public class CriticalStatusEvent extends ProductionLineEvent{
     public double getCriticality(){
         return this.criticality;
     }
-    
 }

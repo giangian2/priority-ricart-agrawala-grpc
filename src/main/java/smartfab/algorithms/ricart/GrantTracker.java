@@ -23,6 +23,10 @@ final class GrantTracker {
         this.acked.clear();
     }
 
+    public synchronized void forget(int peerId){
+        this.acked.remove(peerId);
+    }
+
     /**
      * 
      * @param peerId

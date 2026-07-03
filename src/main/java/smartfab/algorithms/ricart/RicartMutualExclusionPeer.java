@@ -51,7 +51,6 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
             MqttClientManager.getInstance()
                 .publishNewState(peerId, newState.name());
         } catch (MqttException e) {
-            System.out.println("[MQTT] STATUS NOT PUBLSHED!");
             e.printStackTrace();
         }
     }
@@ -64,6 +63,11 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
     @Override
     public synchronized void requestCalibration(double criticality) {
         System.out.println("LINE " + this.peerId + ": Request Calibration");
+
+        if (this.state instanceof CalibratingState) {
+            System.out.println("LINE " + this.peerId + ": already CALIBRATING, trigger ignored");
+            return;
+        }
 
         /**
          * INCREMENT THE ROUND AT EACH NEW CALIBRATION REQUEST
@@ -99,6 +103,8 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
                 .setTimestamp(round)
                 .setPriority(0)
                 .build(), targetId));
+
+        notifyAll();
     }
 
     @Override
@@ -116,6 +122,18 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
             this.state.onGrant(this, senderId, round);
         }else{
             System.out.println("ROUND DOES NOT MATCH!");
+        }
+    }
+
+    @Override
+    public synchronized void onExitPeerReceived(int senderId) {
+        System.out.println("PEER LEFT NETWORK: " + senderId);
+        this.transport.removePeer(senderId);
+        this.deferred.remove(senderId);
+        this.grants.forget(senderId);
+
+        if (this.state instanceof WaitingState && this.hasFullQuorum()) {
+            this.enterCriticalSection(this.peerId);
         }
     }
 
@@ -201,4 +219,26 @@ public class RicartMutualExclusionPeer implements MutualExclusionAlgorithm, Rica
         this.dispatcher.notify(new CalibrationGrantEvent(triggeringPeerId, now));
     }
 
+    @Override
+    public synchronized void shutdown() {
+        while (this.state instanceof CalibratingState) {
+            System.out.println("Shutdown: attendo fine calibrazione");
+            try {
+                wait();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        if (this.state instanceof WaitingState) {
+            this.releaseCalibration();
+        } else {
+            this.grants.reset();
+            this.deferred.clear();
+        }
+
+        this.transport.sendExitToAll(this.peerId);
+        this.transport.shutdown();
+        System.out.println("Shutdown completato");
+    }
 }

@@ -24,6 +24,12 @@ public interface MutualExclusionAlgorithm {
 
     /**
      * 
+     * @param senderId
+     */
+    void onExitPeerReceived(int senderId);
+
+    /**
+     * 
      * @param criticality
      */
     void requestCalibration(double criticality);
@@ -53,4 +59,6 @@ public interface MutualExclusionAlgorithm {
      * @param listener
      */
     void subscribe(EventListener<ProductionLineEvent> listener);
+
+    void shutdown();
 }

@@ -16,7 +16,7 @@ public class JsonMapper {
      * @param <T>
      * @param json
      * @param clazz
-     * @return
+     * @return Deserialized Object
      */
     public static <T> T deserialize(String json, Class<T> clazz) {
         try {
@@ -30,7 +30,7 @@ public class JsonMapper {
      * 
      * @param <T>
      * @param object
-     * @return
+     * @return JSON stirng of serialized object
      */
     public static <T> String serialize(T object){
         return mapper.writeValueAsString(object);

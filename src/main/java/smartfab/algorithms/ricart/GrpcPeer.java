@@ -16,9 +16,7 @@ import smartfab.model.edge.ObserverFactory;
 /**
  * @author Gianluca Bianchi
  * 
- * THREAD-SAFE gRPC implementetion of {@link smartfab.algorithms.ricart.Peer}
- * 
- * 
+ *      THREAD-SAFE gRPC implementetion of {@link smartfab.algorithms.ricart.Peer}
  */
 public class GrpcPeer implements Peer {
 
@@ -50,10 +48,29 @@ public class GrpcPeer implements Peer {
 
     }
 
+    @Override
     public void removePeer(int peerId) {
-        throw new UnsupportedOperationException("PEER REMOVAL NOT SUPPORTED YET!");
+        synchronized (this.peersLock) {
+            this.peers.entrySet()
+                    .stream()
+                    .filter(e -> e.getKey().getID() == peerId)
+                    .findFirst()
+                    .ifPresent(entry->{
+                        entry.getValue().shutdown();
+                        this.peers.remove(entry.getKey());
+                        System.out.println("PEER REMOVED: " + peerId);
+                    });
+        }
     }
 
+    @Override
+    public void shutdown() {
+        synchronized (this.peersLock) { 
+            this.peers.values().forEach(PeerStub::shutdown);
+            this.peers.clear();
+        }
+    }
+ 
     @Override
     public List<PeerInfo> getAllPeers() {
         synchronized(this.peersLock){
@@ -139,6 +156,14 @@ public class GrpcPeer implements Peer {
                     .setSnederAddress(peer.getAddress())
                     .setSenderPort(peer.getPort())
                     .build(), this.obaserverFactory.emptyStreamObserver());
-        });
+                });
+    }
+
+    @Override
+    public void sendExitToAll(int peerId) {
+        this.getAllPeersStub().forEach(ps ->
+                ps.getStub().exitP2P(P2PJoinRequest.newBuilder()
+                    .setLineId(peerId)
+                    .build(), this.obaserverFactory.emptyStreamObserver()));
     }
 }

@@ -41,7 +41,7 @@ public class MqttSubscriberService {
             var msg = JsonMapper.deserialize(new String(message.getPayload()), ProdLineStatusMessage.class);
             if(topic.split("/").length >= 2){
                 try{
-                    System.out.println("[MQTT] New status received: "+ msg.getStatus());
+                    System.out.println("[MQTT] New status received from line "+msg.getLineId()+": "+ msg.getStatus());
                     peerService.setPeerStatus(new PeerInfo(msg.getLineId(), null, 0), msg.getStatus());
                 }catch(NumberFormatException e){
                     System.out.println("Error on topic: "+topic);

@@ -9,6 +9,12 @@ import smartfab.algorithms.ricart.PeerInfo;
 
 import java.util.List;
 
+/**
+ * @author Gianluca Bianchi
+ * 
+ *      PeerRestClient used by {@link smartfab.model.edge.ProductionLine}
+ *      in order to start the registration process through the http admin server.
+ */
 public class PeerRestClient {
 
     private final RestTemplate restTemplate;
@@ -31,5 +37,10 @@ public class PeerRestClient {
         );
 
         return response.getBody();
+    }
+
+    public void removePeer(PeerInfo peer){
+        String url = baseUrl + "/api/prodlines/" + peer.getID();
+        restTemplate.exchange(url, HttpMethod.DELETE, HttpEntity.EMPTY, Void.class);
     }
 }

@@ -1,29 +1,29 @@
 package smartfab.model.edge;
 
-import java.util.Date;
 import java.util.List;
 
 import org.eclipse.paho.client.mqttv3.MqttException;
 
+import smartfab.model.edge.AveragesBuffer.Average;
 import smartfab.model.mqtt.AverageMessage;
 import smartfab.model.mqtt.MqttClientManager;
 
 /**
  * @author Gianluca Bianchi
  * 
- * 
- * THis Thread will 
  */
 public class AveragesConsumer extends Thread {
 
     private final AveragesBuffer    averagesBuffer;
     private final int               lineId;
     private static final int        INTERVAL_MS = 10000;
+    private volatile boolean        stopCondition;
     private volatile boolean        paused = false;
     private final Object            pauseLock = new Object();
 
     public AveragesConsumer(int lineId, AveragesBuffer averagesBuffer) {
         this.lineId         = lineId;
+        this.stopCondition  = false;
         this.averagesBuffer = averagesBuffer;
     }
 
@@ -38,7 +38,16 @@ public class AveragesConsumer extends Thread {
         }
     }
 
-    public void stopConsuming(){
+    public void stopConsuming() {
+        stopCondition = true;
+
+        synchronized (pauseLock) {
+            paused = false;
+            pauseLock.notifyAll();
+        }
+    }
+
+    public void pauseConsuming(){
         synchronized(pauseLock){
             paused = true;
             pauseLock.notifyAll();
@@ -47,7 +56,7 @@ public class AveragesConsumer extends Thread {
 
     @Override
     public void run() {
-        while (true) {
+        while (!stopCondition) {
             try {
 
                 synchronized(pauseLock){
@@ -56,17 +65,11 @@ public class AveragesConsumer extends Thread {
                     }
                 }
 
-                List<Double> medie = averagesBuffer.readAllAndClear();
-                if (!medie.isEmpty()) {
-                    System.out.printf("[Linea %d] Avgs computed %s%n", lineId, medie);
-                }
-            
-                medie.stream()
+                averagesBuffer.readAllAndClear().stream()
                     .forEach((avg)->{
                         try {
-                            System.out.println("PUSHING");
                             MqttClientManager.getInstance()
-                                    .publishMeasurement(lineId, new AverageMessage(lineId, avg, new Date().getTime()));
+                                    .publishMeasurement(lineId, new AverageMessage(lineId, avg.value(), avg.timestamp()));
                         } catch (MqttException e) {
                             System.out.println("FAILED TO PUSH AVG TO MQTT");
                         }
@@ -78,5 +81,7 @@ public class AveragesConsumer extends Thread {
                 break;
             }
         }
+
+        this.averagesBuffer.readAllAndClear();
     }
 }

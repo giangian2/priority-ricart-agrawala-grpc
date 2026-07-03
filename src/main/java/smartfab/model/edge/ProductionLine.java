@@ -1,6 +1,9 @@
 package smartfab.model.edge;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -15,6 +18,7 @@ import smartfab.model.events.CalibrationGrantEvent;
 import smartfab.model.events.CalibrationTerminatedEvent;
 import smartfab.model.events.CriticalStatusEvent;
 import smartfab.model.events.ProductionLineEvent;
+import smartfab.model.mqtt.MqttClientManager;
 import smartfab.model.events.EventListener;
 
 /**
@@ -62,25 +66,16 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     }
 
     /**
-     * Composition root: creates the transport, registers the known peers and
+     * Creates the transport, registers the known peers and
      * wires the mutual exclusion algorithm on top of it.
-     * 
-     * @todo
-     * WE NEED TO PASS THE RICART MUTUAL EXCLUSION PEER (AND SO ALSO THE GRPC PEER) AS PARAMS TO THIS METHOD.
-     * THEY NEEDS TO BE USED BEFORE THE PRODUCTION LINE INITIALIZATION IN ORDER TO START THE GRPC SERVER
      */
     public static Optional<ProductionLine> init(int lineId, String lineAddress, int linePort,
-            String adminServerAddress, int adminServerPort, Peer transportPeer) {
+            Peer transportPeer,MutualExclusionAlgorithm algorithm, AveragesBuffer averagesBuffer, 
+            MeasurementBuffer measurementBuffer, MonitoringSensor sensorThread, PeerRestClient restClient,
+            SlidingWindowProcessor slidingWindowProcessor, AveragesConsumer averagesConsumer) {
 
-        var averagesBuffer          = new AveragesBuffer();
-        var measurementBuffer       = new MeasurementBuffer();
-        var sensorThread            = new MonitoringSensor(measurementBuffer);
-        var slidingWindowProcessor  = new SlidingWindowProcessor(measurementBuffer, averagesBuffer);
-        var averagesConsumer        = new AveragesConsumer(lineId, averagesBuffer);
-        var algorithm               = new RicartMutualExclusionPeer(transportPeer, lineId);
-        var peerRestClient          = new PeerRestClient("http://" + adminServerAddress + ":" + adminServerPort);
 
-        var otherPeers = peerRestClient.registerPeer(new PeerInfo(lineId, lineAddress, linePort));
+        var otherPeers = restClient.registerPeer(new PeerInfo(lineId, lineAddress, linePort));
         otherPeers.forEach(p -> transportPeer.addPeer(new PeerInfo(p.getID(), p.getAddress(), p.getPort())));
 
         return Optional.of(new ProductionLine(lineId,
@@ -105,6 +100,7 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     }
 
     public void stop() {
+        this.algorithm.shutdown();
         this.stopThreads();
         this.clearBuffers();
     }
@@ -127,8 +123,6 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
         if (event instanceof CalibrationTerminatedEvent) {
             this.onCalibrationTerminated();
         }
-
-        System.out.println("[PRODUCTION LINE] EVENT RECEIVED: " + event.getClass().toString());
     }
 
     private void clearBuffers() {
@@ -137,9 +131,9 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     }
 
     private void pauseThreads() {
-        this.slidingWindowProcessorThread.stopProcessing();
+        this.slidingWindowProcessorThread.pauseProcessing();
         this.sensorThread.pauseMeasuring();
-        this.averagesConsumerThread.stopConsuming();
+        this.averagesConsumerThread.pauseConsuming();
     }
 
     private void startThreads() {
@@ -149,7 +143,9 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     }
 
     private void stopThreads() {
-
+        this.sensorThread.stopMeasuring();
+        this.slidingWindowProcessorThread.stopProcessing();
+        this.averagesConsumerThread.stopConsuming();
     }
 
     /**
@@ -185,20 +181,42 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     }
 
     public static void main(String... args) throws InterruptedException {
-        if (args.length < 3) {
-            System.err.println("Error: Pass the grpc local line ID, ip address and port [-Pargs='1 127.0.0.1 8001']");
+        if (args.length < 4) {
+            System.err.println("Error: Pass the grpc local line ID, ip address, port and server url [-Pargs='1 127.0.0.1 8001 http://localhost::8080']");
             return;
         }
 
-        int lineId = Integer.parseInt(args[0]);
-        String localIp = args[1];
-        int localPort = Integer.parseInt(args[2]);
+        int lineId          = Integer.parseInt(args[0]);
+        String localIp      = args[1];
+        int localPort       = Integer.parseInt(args[2]);
+        String serverUrl    = args[3];
         
         /**
          * WE NEED TO START THE GRPC SERVER BEFORE THE PRODUCTION LINE
          */
-        GrpcPeer peer       = new GrpcPeer();    
-        var prodLine        = ProductionLine.init(lineId, localIp, localPort, "127.0.0.1", 8080, peer);
+        var peer                    = new GrpcPeer();    
+        var averagesBuffer          = new AveragesBuffer();
+        var measurementBuffer       = new MeasurementBuffer();
+        var sensorThread            = new MonitoringSensor(measurementBuffer);
+        var slidingWindowProcessor  = new SlidingWindowProcessor(measurementBuffer, averagesBuffer);
+        var averagesConsumer        = new AveragesConsumer(lineId, averagesBuffer);
+        var algorithm               = new RicartMutualExclusionPeer(peer, lineId);
+        var peerRestClient          = new PeerRestClient(serverUrl);
+
+
+
+        var prodLine = ProductionLine.init(
+                lineId, 
+                localIp, 
+                localPort, 
+                peer, 
+                algorithm,
+                averagesBuffer, 
+                measurementBuffer, 
+                sensorThread, 
+                peerRestClient,
+                slidingWindowProcessor, 
+                averagesConsumer);
 
 
         if (prodLine.isPresent()) {
@@ -212,20 +230,53 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
                 .build();
 
             try {
+                boolean running = true;
                 grpcServer.start();
                 System.out.println("[gRPC SERVER] Listening on port: " + localPort + "...");
+                
+                pl.joinPeerNetwork();
+                pl.start();
 
+                var inputStreamReader =  new BufferedReader(new InputStreamReader(System.in));
+
+                while(running){
+                    String inputCommand = inputStreamReader.readLine();
+                    if(inputCommand.equals("exit") || inputCommand.equals("quit")){
+                        System.out.println("Received STOP command!");
+                        running=false;
+                    }
+                }
+
+                /**
+                 * Before sending EXIT message, notify the admin server.
+                 * In this way it's not possible to reach the inconsistent state when
+                 * a line exit and another join in the same time: since register and remove 
+                 * are synchornized on the server, it can't happen that the new registering
+                 * line will receive the exited peer address and port.
+                 */
+                peerRestClient.removePeer(new PeerInfo(lineId, localIp, localPort));
+                pl.stop();
+                            
+                //Wait all threads to finish
+                measurementBuffer.unblock();
+                averagesConsumer.join();
+                sensorThread.join();
+                slidingWindowProcessor.join();
+                System.out.println("Processors threads stopped!");
+                grpcServer.shutdown();
+                if (!grpcServer.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                    grpcServer.shutdownNow();
+                    grpcServer.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
+                }
+                System.out.println("gRPC server stopped!");
+                //After all threds finished, close Mqtt client
+                MqttClientManager.getInstance().disconnect();
+                System.out.println("MQTT client disconnected!");
+                System.exit(0);
             } catch (IOException e) {
                 System.err.println("Can't start grpc server at port:  " + localPort);
                 e.printStackTrace();
                 return;
-            }
-
-            pl.joinPeerNetwork();
-            pl.start();
-
-            while (true) {
-                Thread.sleep(20000);
             }
 
         } else {

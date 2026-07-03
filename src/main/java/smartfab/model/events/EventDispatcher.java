@@ -11,7 +11,8 @@ import java.util.List;
  *      that drives the flow of the {@link smartfab.model.events.ProductionLineEvent}
  *      events.
  *      NOTE: the method for notify the listeners it's implemented with the pattern
- *      FIRE-AND-FORGET, so it starts another anonymous thread
+ *      FIRE-AND-FORGET, so it starts another anonymous thread in order to let the
+ *      publisher thread goign on with his computation.
  */
 public class EventDispatcher<T> {
     private final List<EventListener<T>> listeners = new ArrayList<>();

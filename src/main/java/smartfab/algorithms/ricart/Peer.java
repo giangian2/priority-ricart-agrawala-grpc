@@ -21,6 +21,12 @@ public interface Peer {
      * @param peer
      */
     void sendJoinRequestToAll(PeerInfo peer);
+
+    /**
+     * 
+     * @param request
+     */
+    void sendExitToAll(int peerId);
     
     /**
      * 
@@ -69,4 +75,6 @@ public interface Peer {
      * @param myId
      */
     void sendReleaseToAll(int myId);
+
+    public void shutdown();
 }

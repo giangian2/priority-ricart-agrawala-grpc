@@ -3,6 +3,7 @@ package smartfab.model.edge;
 import java.util.Date;
 import java.util.List;
 
+import smartfab.model.edge.AveragesBuffer.Average;
 import smartfab.model.events.CriticalStatusEvent;
 import smartfab.model.events.EventDispatcher;
 import smartfab.model.events.EventListener;
@@ -23,7 +24,8 @@ public class SlidingWindowProcessor extends Thread {
 
     private final Buffer            rawBuffer;
     private final AveragesBuffer    averagesBuffer;
-    private volatile boolean        stopped;
+    private volatile boolean        paused;
+    private volatile boolean        stopCondition;
     private final Object            pauseLock;
 
     private final EventDispatcher<ProductionLineEvent> dispatcher = new EventDispatcher<>();
@@ -31,13 +33,14 @@ public class SlidingWindowProcessor extends Thread {
     public SlidingWindowProcessor(Buffer rawBuffer, AveragesBuffer averagesBuffer) {
         this.rawBuffer      = rawBuffer;
         this.averagesBuffer = averagesBuffer;
-        this.stopped        = false;
+        this.paused         = false;
+        this.stopCondition  = false;
         this.pauseLock      = new Object();
     }
 
-    public void stopProcessing() {
+    public void pauseProcessing() {
         synchronized (pauseLock) {
-            stopped = true;
+            paused = true;
             pauseLock.notifyAll();
         }
 
@@ -45,12 +48,21 @@ public class SlidingWindowProcessor extends Thread {
 
     public void startProcessing() {
         synchronized (pauseLock) {
-            stopped = false;
+            paused = false;
             pauseLock.notifyAll();
         }
 
         if (getState() == State.NEW) {
             this.start();
+        }
+    }
+
+    public void stopProcessing() {
+        stopCondition = true;
+
+        synchronized (pauseLock) {
+            paused = false;
+            pauseLock.notifyAll();
         }
     }
 
@@ -65,10 +77,10 @@ public class SlidingWindowProcessor extends Thread {
     @Override
     public void run() {
 
-        while (true) {
+        while (!stopCondition) {
 
             synchronized (pauseLock) {
-                while (stopped) {
+                while (paused) {
                     try {
                         pauseLock.wait();
                     } catch (InterruptedException e) {
@@ -86,12 +98,15 @@ public class SlidingWindowProcessor extends Thread {
                     .average()
                     .orElse(0.0);
 
-            averagesBuffer.addAverage(avg);
+            averagesBuffer.addAverage(new Average(avg, new Date().getTime()));
 
             if (avg > THRESHOLD) {
-                System.out.printf("[CRITICAL] ** CRITICAL SECTION ** avg = %.2f > %.0f%n", avg, THRESHOLD);
-                this.notifyEvent(new CriticalStatusEvent(new Date().getTime(), avg));
+                double criticality = (avg - THRESHOLD) / THRESHOLD;
+                System.out.printf("[CRITICAL] avg = %.2f, criticality = %.3f%n", avg, criticality);
+                this.notifyEvent(new CriticalStatusEvent(new Date().getTime(), criticality));
             }
         }
+
+        this.rawBuffer.clear();
     }
 }

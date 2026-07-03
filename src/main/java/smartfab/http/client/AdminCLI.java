@@ -10,7 +10,7 @@ import smartfab.http.contorller.ProductionLineController.PeerStatusResponse;
 /**
  * @author Gianluca Bianchi
  *
- *      Interactive command line client for the analyst. It talks to the admin
+ *      Interactive command line client for the smartfab admin. It talks to the admin
  *      server through {@link smartfab.http.client.AdminRestClient}.
  *      The base url of the admin server can be passed as the first program
  *      argument (default: http://localhost:8080).
@@ -126,10 +126,10 @@ public class AdminCLI {
     private static void printHelp() {
         System.out.println("""
                 Available commands:
-                  list                        list peers with their status
-                  find <lineID>               find a single peer with its status
+                  list                        list peers
+                  find <lineID>               find a single peer
                   avgs <lineID> [from] [to]   find averages of a line (from/to = epoch millis)
-                  help                        show this help
+                  help                        help
                   exit                        quit""");
     }
 }

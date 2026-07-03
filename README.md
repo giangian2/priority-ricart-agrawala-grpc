@@ -116,7 +116,7 @@ Gradle wrapper is bundled, no local Gradle needed.
 | `make run-mqtt-broker` | Start the MQTT broker (`docker compose up -d`). |
 | `make run-admin-server` | Start the Spring administration server (registration, discovery, telemetry). |
 | `make run-admin-client` | Start the administration CLI. |
-| `make run-pl-instance ARGS="<id> <ip> <port>"` | Start a production line with the given identifier and gRPC endpoint. |
+| `make run-pl-instance ARGS="<id> <ip> <port> <admin server url>"` | Start a production line with the given identifier and gRPC endpoint. |
 
 
 

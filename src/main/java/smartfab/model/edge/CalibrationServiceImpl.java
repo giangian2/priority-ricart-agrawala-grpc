@@ -8,6 +8,11 @@ import smartfab.algorithms.ricart.MutualExclusionAlgorithm;
  *
  *      gRPC entry point: depends only on the {@link MutualExclusionAlgorithm}
  *      abstraction, not on a concrete peer implementation.
+ *      FIRE AND FORGET PATTERN: the grpc server will respond immediatly
+ *      with an {@link smartfab.Smartfab.Empty} response.
+ *      @todo for future improvements we can use a Thread Pool system 
+ *      instead of firing anonymous threads.
+ *      
  */
 public class CalibrationServiceImpl extends CalibrationServiceImplBase {
 
@@ -15,6 +20,17 @@ public class CalibrationServiceImpl extends CalibrationServiceImplBase {
 
     public CalibrationServiceImpl(MutualExclusionAlgorithm peer) {
         this.peer = peer;
+    }
+
+    @Override
+    public void exitP2P(smartfab.Smartfab.P2PJoinRequest request,
+            io.grpc.stub.StreamObserver<smartfab.Smartfab.Empty> responseObserver) {
+      
+        System.out.println("[gRPC Server] Received exit from " + request.getLineId());
+        new Thread(() -> {
+            this.peer.onExitPeerReceived(request.getLineId());
+        }).start();
+        responseObserver.onNext(smartfab.Smartfab.Empty.getDefaultInstance());
     }
 
     @Override

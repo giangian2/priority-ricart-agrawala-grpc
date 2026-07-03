@@ -47,7 +47,7 @@ public class ProductionLineController {
 
     @GetMapping("/{lineID}")
     public ResponseEntity<PeerStatusResponse> getProductionline(@PathVariable int lineID) {
-        var peerEntry = peerService.getPeerStatus(lineID);
+        var peerEntry = peerService.getPeer(lineID);
         return ResponseEntity.ok(new PeerStatusResponse(
                 peerEntry.getKey().getID(), 
                 peerEntry.getKey().getAddress(), 
@@ -68,6 +68,10 @@ public class ProductionLineController {
         return ResponseEntity.ok(measurementService.findLineMeasurements(lineID, from.get(), to.get()));
     }
 
+    @DeleteMapping("/{lineID}")
+    public void deleteProductionLine(@PathVariable int lineID){
+        this.peerService.removePeer(new PeerInfo(lineID,null,0));
+    }
     /**
      * 
      * PeerStatusResponse

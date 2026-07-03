@@ -21,4 +21,5 @@ service CalibrationService {
   rpc requestCalibration(CalibrationRequest) returns (Empty);
   rpc grantCalibrationAccess(CalibrationRequest) returns (Empty);
   rpc joinP2P(P2PJoinRequest) returns (Empty);
+  rpc exitP2P(P2PJoinRequest) returns (Empty);
 }

@@ -12,9 +12,9 @@ import smartfab.util.JsonMapper;
 /**
  * @author Gianluca Bianchi
  * 
- * MqttClientManager for manage mqtt client connection for both
- * Publishers and Subscribers. In this way we centralize the configuration
- * of the Client ad the publish / subscibe operations.
+ *      MqttClientManager for manage mqtt client connection for both
+ *      Publishers and Subscribers. In this way we centralize the configuration
+ *      of the Client ad the publish / subscibe operations.
  */
 public class MqttClientManager {
 
@@ -38,6 +38,15 @@ public class MqttClientManager {
     public static synchronized MqttClientManager getInstance() {
         if (instance == null) instance = new MqttClientManager();
         return instance;
+    }
+
+    public void disconnect(){
+        try {
+            this.client.disconnect();
+            this.client.close();
+        } catch (MqttException e) {
+            e.printStackTrace();
+        }
     }
 
     private void publish(String topic, String payload) throws MqttException {

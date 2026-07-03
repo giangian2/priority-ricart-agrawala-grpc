@@ -4,6 +4,5 @@ public class CalibrationGrantEvent extends ProductionLineEvent{
 
     public CalibrationGrantEvent(int lineId, long timestamp) {
         super(timestamp);
-    }
-    
+    } 
 }

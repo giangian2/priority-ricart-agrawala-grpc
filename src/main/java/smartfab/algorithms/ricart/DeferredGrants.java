@@ -34,6 +34,11 @@ final class DeferredGrants {
         this.queue.entrySet()
                 .stream()
                 .forEach((entry)->grantSender.accept(entry.getKey(), entry.getValue()));
+        this.queue.clear();
+    }
+
+    public synchronized void remove(int peerId) {
+        this.queue.remove(peerId);
     }
 
     /**

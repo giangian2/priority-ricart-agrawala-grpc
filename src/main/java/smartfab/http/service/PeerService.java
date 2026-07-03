@@ -20,6 +20,9 @@ public class PeerService {
     private PeerRepository peerRepository;
 
     public void registerPeer(PeerInfo peerInfo){
+        if(this.peerRepository.findById(peerInfo).isPresent()){
+            throw new IllegalStateException("Peer with ID= "+ peerInfo.getID() +" already exists");
+        }
         this.peerRepository.save(peerInfo, DEFAULT_STATE);
     }
 
@@ -34,11 +37,15 @@ public class PeerService {
         }
     }
 
-    public Entry<PeerInfo, String> getPeerStatus(int peerID){
+    public Entry<PeerInfo, String> getPeer(int peerID){
         if(this.peerRepository.findById(new PeerInfo(peerID,null,0)).isEmpty()){
             throw new IllegalStateException("Error 404: Peer: "+peerID+" not found!");
         }
         return this.peerRepository.findById(new PeerInfo(peerID, null, 0)).get();
+    }
+
+    public void removePeer(PeerInfo peer){
+        this.peerRepository.deleteById(peer);
     }
 
     public Map<PeerInfo,String> getAll(){
