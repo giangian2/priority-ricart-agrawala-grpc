@@ -60,3 +60,12 @@ protobuf {
 tasks.test {
     useJUnitPlatform()
 }
+
+
+//ECTRACT DI RUNTIME EFFECTIVE CLASSPATH!!!!!
+val printClasspath by tasks.registering {
+    doLast {
+        val classpath = sourceSets.main.get().runtimeClasspath.asPath
+        println(classpath)
+    }
+}

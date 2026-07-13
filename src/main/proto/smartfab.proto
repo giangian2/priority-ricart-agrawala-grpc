@@ -1,0 +1,25 @@
+syntax = "proto3";
+package smartfab;
+
+message Empty{}
+
+message CalibrationRequest{
+  int32 lineId          = 1;
+  double priority       = 2;
+  double timestamp      = 3;
+  string snederAddress  = 4;
+  int32 senderPort      = 5;
+}
+
+message P2PJoinRequest{
+  int32 lineId          = 1;
+  string snederAddress  = 2;
+  int32 senderPort      = 3;
+}
+
+service CalibrationService {
+  rpc requestCalibration(CalibrationRequest) returns (Empty);
+  rpc grantCalibrationAccess(CalibrationRequest) returns (Empty);
+  rpc joinP2P(P2PJoinRequest) returns (Empty);
+  rpc exitP2P(P2PJoinRequest) returns (Empty);
+}
