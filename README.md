@@ -1,3 +1,5 @@
+![Logo del progetto](./res/smartfab.svg)
+
 # SMARTFAB
 
 The system consists of a peer-to-peer network of **production lines** with an
