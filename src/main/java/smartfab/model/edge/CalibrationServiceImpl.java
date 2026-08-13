@@ -8,11 +8,6 @@ import smartfab.algorithms.ricart.MutualExclusionAlgorithm;
  *
  *      gRPC entry point: depends only on the {@link MutualExclusionAlgorithm}
  *      abstraction, not on a concrete peer implementation.
- *      FIRE AND FORGET PATTERN: the grpc server will respond immediatly
- *      with an {@link smartfab.Smartfab.Empty} response.
- *      @todo for future improvements we can use a Thread Pool system 
- *      instead of firing anonymous threads.
- *      
  */
 public class CalibrationServiceImpl extends CalibrationServiceImplBase {
 
@@ -27,9 +22,7 @@ public class CalibrationServiceImpl extends CalibrationServiceImplBase {
             io.grpc.stub.StreamObserver<smartfab.Smartfab.Empty> responseObserver) {
       
         System.out.println("[gRPC Server] Received exit from " + request.getLineId());
-        new Thread(() -> {
-            this.peer.onExitPeerReceived(request.getLineId());
-        }).start();
+        this.peer.onExitPeerReceived(request.getLineId());
         responseObserver.onNext(smartfab.Smartfab.Empty.getDefaultInstance());
     }
 
@@ -38,9 +31,7 @@ public class CalibrationServiceImpl extends CalibrationServiceImplBase {
             io.grpc.stub.StreamObserver<smartfab.Smartfab.Empty> responseObserver) {
 
         System.out.println("[gRPC Server] Received request calibration from " + request.getLineId());
-        new Thread(()->{
-            this.peer.onRequestReceived(request.getLineId(), request.getPriority(), (int) request.getTimestamp());
-        }).start();
+        this.peer.onRequestReceived(request.getLineId(), request.getPriority(), (int) request.getTimestamp());
         responseObserver.onNext(smartfab.Smartfab.Empty.getDefaultInstance());
         responseObserver.onCompleted();
     }
@@ -50,9 +41,7 @@ public class CalibrationServiceImpl extends CalibrationServiceImplBase {
             io.grpc.stub.StreamObserver<smartfab.Smartfab.Empty> responseObserver) {
 
         System.out.println("[gRPC Server] Received grant from " + request.getLineId());
-        new Thread(()->{
-            this.peer.onGrantReceived(request.getLineId(), (int) request.getTimestamp());
-        }).start();
+        this.peer.onGrantReceived(request.getLineId(), (int) request.getTimestamp());
         responseObserver.onNext(smartfab.Smartfab.Empty.getDefaultInstance());
         responseObserver.onCompleted();
     }
@@ -62,9 +51,7 @@ public class CalibrationServiceImpl extends CalibrationServiceImplBase {
             io.grpc.stub.StreamObserver<smartfab.Smartfab.Empty> responseObserver) {
 
         System.out.println("[gRPC Server] Received join request from " + request.getLineId());
-        new Thread(()->{
-            this.peer.onJoinPeerReceived(request.getLineId(),request.getSnederAddress(), request.getSenderPort());
-        }).start();
+        this.peer.onJoinPeerReceived(request.getLineId(),request.getSnederAddress(), request.getSenderPort());
         responseObserver.onNext(smartfab.Smartfab.Empty.getDefaultInstance());
         responseObserver.onCompleted();
     }
