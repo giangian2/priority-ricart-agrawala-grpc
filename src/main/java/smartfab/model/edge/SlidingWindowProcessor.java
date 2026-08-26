@@ -71,7 +71,7 @@ public class SlidingWindowProcessor extends Thread {
     }
 
     private void notifyEvent(ProductionLineEvent event) {
-        dispatcher.notify(event);
+        dispatcher.publish(event);
     }
 
     @Override

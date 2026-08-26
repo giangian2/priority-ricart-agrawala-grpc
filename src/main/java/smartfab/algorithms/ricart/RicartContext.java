@@ -2,67 +2,59 @@ package smartfab.algorithms.ricart;
 
 /**
  * @author Gianluca Bianchi
- * 
- *      View of the peer that the {@link PeerState} implementations are
- *      allowed to drive. Keeps the state objects decoupled from the full peer methos
- *      (transport, dispatcher, threading) and from each other.
- *      THIS DEISGN CHOICE IS DONE IN ORDER TO IMPROVE CROSS CUTTING CONCERNS
+ *
+ *      The slice of the peer that {@link PeerState} implementations are allowed
+ *      to drive. Keeps the state objects decoupled from the transport, the
+ *      event dispatcher and each other.
+ *
+ *      Every method here is PURE with respect to the outside world: grantTo
+ *      does not reach the network, it appends to the outbox. That is what makes
+ *      the state machine testable with a hand written context, and what keeps
+ *      network I/O out of the engine monitor.
  */
 interface RicartContext {
 
-    /**
-     * @return
-     */
     int peerId();
 
-    /**
-     * 
-     * @return current criticality level
-     */
-    double currentCriticality();
+    /** @return the criticality of the request we are currently competing for */
+    double myCriticality();
+
+    /** @return the round of the request we are currently competing for */
+    int myRound();
 
     /**
-     * @return
-     */
-    int otherPeerCount();
-
-    /**
-     * 
-     * @param targetPeerId
-     * @param round
+     * Queues a grant for the given peer. Does NOT send it.
+     *
+     * @param round the round of the REQUEST being granted, so the receiver can
+     *              discard the grant if it belongs to a round it has abandoned
      */
     void grantTo(int targetPeerId, int round);
 
     /**
-     * Puts the specified peer into the {@link smartfab.algorithms.ricart.DeferredGrants} queue
-     * @param targetPeerId
-     * @param round
+     * Parks the request: it will be granted when we release the section.
      */
     void deferGrant(int targetPeerId, int round);
 
-    /**
-     * Put the specified 
-     * @param fromPeerId
-     */
     void recordGrant(int fromPeerId);
 
-    /** 
-     * @return true when grants from all other peers have been collected
-     */
+    /** @return true when every other peer granted the current round */
     boolean hasFullQuorum();
 
-    /** 
-     * Transition to CALIBRATING and notify listeners
-     */
+    /** Transitions to CALIBRATING and queues the acquisition event. */
     void enterCriticalSection(int triggeringPeerId);
 
     /**
-     * Restarts the last mutual exlcusion requerst process.
-     * It will be consumed by {@link smartfab.algorithms.ricart.PeerState} instance
-     * when the peer is in WATING state and receives a request from another peer
-     * that wins the priority rule (CRITICALITY,LINE_ID) it has to restart
-     * the request calibration process (after sending grant) in order to prevent
-     * simultaneous calibrations due to the ASYNC nature of the system.
+     * Gives up the current competition in favour of a higher priority peer and
+     * immediately competes again.
+     *
+     * Needed because priority here is (criticality, lineId) rather than a
+     * Lamport timestamp: a peer can discover, after having already sent its own
+     * request, that a competitor outranks it. Canonical Ricart-Agrawala does
+     * not need this, since timestamps establish a total order known in advance.
+     *
+     * Opens a NEW round rather than reusing the current one: grants for the
+     * abandoned attempt may still be in flight, and a fresh round number makes
+     * the round check in onGrantReceived discard them without ambiguity.
      */
-    void restart();
+    void yieldAndRetry();
 }

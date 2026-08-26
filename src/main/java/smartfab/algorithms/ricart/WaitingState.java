@@ -1,20 +1,27 @@
 package smartfab.algorithms.ricart;
 
-
+/**
+ * Competing for the calibration section: the request has been broadcast and we
+ * are collecting grants.
+ */
 final class WaitingState implements PeerState {
 
     @Override
     public void onRequest(RicartContext ctx, int senderId, double senderCriticality, int round) {
-        double mine = ctx.currentCriticality();
+        final double mine = ctx.myCriticality();
 
-        if (senderCriticality > mine) {
-            ctx.grantTo(senderId,round); 
-            ctx.restart();
-        } else if (senderCriticality < mine) {
-            ctx.deferGrant(senderId, round);
-        } else if (senderId < ctx.peerId()) {
-            ctx.grantTo(senderId, round); 
-            ctx.restart();
+        /*
+         * Priority is the pair (criticality, lineId): higher criticality wins,
+         * lower lineId breaks the tie. Losing means granting AND competing
+         * again from a fresh round, otherwise both peers could end up believing
+         * they hold the section.
+         */
+        final boolean senderWins = senderCriticality > mine
+                || (senderCriticality == mine && senderId < ctx.peerId());
+
+        if (senderWins) {
+            ctx.grantTo(senderId, round);
+            ctx.yieldAndRetry();
         } else {
             ctx.deferGrant(senderId, round);
         }
