@@ -628,16 +628,47 @@ Restava invisibile perche' `ObserverFactory.emptyStreamObserver()` ingoiava
 
 ### Il fix
 
+**Ogni** RPC uscente del transport passa da un unico wrapper, `joinP2P`
+inclusa:
+
 ```java
-private void dispatch(int peerId, PeerChannel target, PeerMessage message) {
+private static void detached(Runnable outgoingCall) {
     final Context previous = Context.ROOT.attach();
     try {
-        sendUnderRootContext(peerId, target, message);
+        outgoingCall.run();
     } finally {
         Context.ROOT.detach(previous);
     }
 }
 ```
+
+`ROOT` non e' un `CancellableContext`, quindi la chiamata avviata sotto di esso
+non registra alcun cancellation listener: la sua vita e' davvero indipendente.
+
+Il `detach` **deve** stare in un `finally`. I thread worker di gRPC sono
+riusati: lasciare `ROOT` attaccato significherebbe togliere silenziosamente il
+Context, e con esso la deadline, a lavoro non correlato schedulato dopo su
+quello stesso thread.
+
+### Cosa era rotto e cosa invece no
+
+**Rotto: `send()`.** E' il percorso in cui un invio nasce da una ricezione, su
+un thread del server gRPC che porta il Context della chiamata entrante.
+
+**Mai rotto: `joinP2P`.** `joinNetwork` gira sul thread di bootstrap, dove
+`Context.current()` e' gia' `ROOT`. Passa comunque da `detached()` per tenere
+**un invariante verificabile** (nessuna `stub().<rpc>` di questa classe sfugge
+al detach) invece di un commento sui chiamanti — commento che scadrebbe il
+giorno in cui un rejoin venisse innescato da `onPeerUnreachable`, che su un
+thread gRPC ci gira davvero. Costo su quel percorso: due letture di un thread
+local, una volta sola all'avvio.
+
+E' una scelta di robustezza, non una correzione. Vale la pena saperlo
+distinguere in discussione.
+
+`joinP2P` resta comunque fuori da `send()`, e giustamente: non e' un
+`PeerMessage`, ha un valore di ritorno che decide la membership, e va verso un
+peer che per definizione non e' ancora nella mappa dei canali.
 
 Non e' un workaround: e' la semantica corretta. Un grant di Ricart-Agrawala
 **non e'** la risposta alla richiesta che lo ha innescato, e' una notifica
