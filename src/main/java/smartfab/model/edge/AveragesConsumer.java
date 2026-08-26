@@ -1,10 +1,8 @@
 package smartfab.model.edge;
 
-import java.util.List;
 
 import org.eclipse.paho.client.mqttv3.MqttException;
 
-import smartfab.model.edge.AveragesBuffer.Average;
 import smartfab.model.mqtt.AverageMessage;
 import smartfab.model.mqtt.MqttClientManager;
 
