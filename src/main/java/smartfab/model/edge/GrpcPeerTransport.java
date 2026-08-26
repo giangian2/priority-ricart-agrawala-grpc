@@ -66,7 +66,7 @@ public final class GrpcPeerTransport implements PeerTransport {
             PeerChannel attempt = openChannel(target);
             attempted.put(target.getID(), attempt);
 
-            attempt.stub().joinP2P(MessageCodec.joinRequest(me), new StreamObserver<Empty>() {
+            detached(() -> attempt.stub().joinP2P(MessageCodec.joinRequest(me), new StreamObserver<Empty>() {
 
                 @Override
                 public void onNext(Empty ignored) {
@@ -92,7 +92,7 @@ public final class GrpcPeerTransport implements PeerTransport {
                     synchronized (resultLock) { rejected.add(target); }
                     latch.countDown();
                 }
-            });
+            }));
         }
 
         boolean allAnswered;
@@ -211,25 +211,62 @@ public final class GrpcPeerTransport implements PeerTransport {
      * 6fe42dd) is what exposed it.
      */
     private void dispatch(int peerId, PeerChannel target, PeerMessage message) {
-        final Context previous = Context.ROOT.attach();
-        try {
-            sendUnderRootContext(peerId, target, message);
-        } finally {
-            Context.ROOT.detach(previous);
-        }
+        detached(() -> {
+            /*
+             * A StreamObserver is not thread-safe. Harmless with unary RPCs,
+             * required once every message travels on one shared outbound
+             * observer per peer (see GRPC_STREAMING_DESIGN.md).
+             */
+            synchronized (target.sendLock()) {
+                if (message instanceof PeerMessage.Request request) {
+                    target.stub().requestCalibration(MessageCodec.toProto(request), replyOf(peerId, message));
+                } else if (message instanceof PeerMessage.Grant grant) {
+                    target.stub().grantCalibrationAccess(MessageCodec.toProto(grant), replyOf(peerId, message));
+                } else if (message instanceof PeerMessage.Leave leave) {
+                    target.stub().exitP2P(MessageCodec.toProto(leave), replyOf(peerId, message));
+                } else {
+                    throw new IllegalArgumentException("Unsupported message: " + message);
+                }
+            }
+        });
     }
 
-    private void sendUnderRootContext(int peerId, PeerChannel target, PeerMessage message) {
-        synchronized (target.sendLock()) {
-            if (message instanceof PeerMessage.Request request) {
-                target.stub().requestCalibration(MessageCodec.toProto(request), replyOf(peerId, message));
-            } else if (message instanceof PeerMessage.Grant grant) {
-                target.stub().grantCalibrationAccess(MessageCodec.toProto(grant), replyOf(peerId, message));
-            } else if (message instanceof PeerMessage.Leave leave) {
-                target.stub().exitP2P(MessageCodec.toProto(leave), replyOf(peerId, message));
-            } else {
-                throw new IllegalArgumentException("Unsupported message: " + message);
-            }
+    /**
+     * Starts an outgoing RPC on a Context detached from any incoming call.
+     *
+     * EVERY outgoing RPC of this class must go through here, joinP2P included.
+     * io.grpc.Context is a thread local: whatever is attached to the thread
+     * when a call is created becomes that call's parent, and when the parent is
+     * cancelled the child call is cancelled with it.
+     *
+     * Nearly every send is triggered by a RECEIVED message: a request makes us
+     * send a grant. On that path the thread is a gRPC server thread and carries
+     * the Context of the incoming call. gRPC cancels that Context as soon as
+     * the handler closes its response, INCLUDING on success, so the grant we
+     * had just started, still in flight, died with it:
+     *
+     *     CANCELLED: io.grpc.Context was cancelled without error
+     *
+     * The peer waiting for that grant then waited forever, and nothing in any
+     * log said why. The anonymous threads that used to wrap every handler hid
+     * this by accident, since a fresh thread carries no Context: removing them
+     * (commit 6fe42dd) is what exposed it.
+     *
+     * ROOT is not a CancellableContext, so a call started under it has no
+     * cancellation listener attached at all and its lifetime is genuinely
+     * independent. That is the truth about these messages: they are
+     * notifications, not the reply to the call that happened to trigger them.
+     *
+     * The detach MUST be in a finally: gRPC worker threads are pooled and
+     * reused, so leaving ROOT attached would silently strip the Context, and
+     * with it the deadline, from unrelated work scheduled on that thread later.
+     */
+    private static void detached(Runnable outgoingCall) {
+        final Context previous = Context.ROOT.attach();
+        try {
+            outgoingCall.run();
+        } finally {
+            Context.ROOT.detach(previous);
         }
     }
 
