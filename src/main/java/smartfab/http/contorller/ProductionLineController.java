@@ -24,11 +24,15 @@ public class ProductionLineController {
     @Autowired
     private MeasurementService measurementService;
 
+    /**
+     * Registers the joining line and returns the peers already in the network.
+     *
+     * Read and write MUST stay a single atomic operation: see
+     * PeerService.registerAndList.
+     */
     @PostMapping
     public ResponseEntity<List<PeerInfo>> registerProductionLine(@RequestBody PeerInfo peer) {
-        Map<PeerInfo, String> updatedPeers = peerService.getAll();
-        peerService.registerPeer(peer);
-        return ResponseEntity.ok(new ArrayList<>(updatedPeers.keySet()));
+        return ResponseEntity.ok(new ArrayList<>(peerService.registerAndList(peer)));
     }
 
     @GetMapping

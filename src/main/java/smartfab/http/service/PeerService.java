@@ -1,6 +1,7 @@
 package smartfab.http.service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -19,11 +20,25 @@ public class PeerService {
     @Autowired
     private PeerRepository peerRepository;
 
-    public void registerPeer(PeerInfo peerInfo){
-        if(this.peerRepository.findById(peerInfo).isPresent()){
-            throw new IllegalStateException("Peer with ID= "+ peerInfo.getID() +" already exists");
+    /**
+     * Registers the new peer and returns the peers that were already registered
+     * BEFORE it, in a single atomic step.
+     *
+     * The duplicate check and the insertion must happen under the same monitor
+     * as the snapshot: otherwise two lines registering at the same instant can
+     * both receive a list that excludes the other, and both would then believe
+     * they are alone in the network and enter the critical section together.
+     *
+     * @param peerInfo the joining peer
+     * @return the peers already in the network
+     */
+    public List<PeerInfo> registerAndList(PeerInfo peerInfo){
+        synchronized (this.peerRepository) {
+            if(this.peerRepository.findById(peerInfo).isPresent()){
+                throw new IllegalStateException("Peer with ID= "+ peerInfo.getID() +" already exists");
+            }
+            return this.peerRepository.saveAndSnapshot(peerInfo, DEFAULT_STATE);
         }
-        this.peerRepository.save(peerInfo, DEFAULT_STATE);
     }
 
     public void setPeerStatus(PeerInfo peerInfo, String status){
