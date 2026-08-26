@@ -14,6 +14,15 @@ import java.util.List;
  *      counts towards the quorum is decided by {@link PeerRegistry} inside the
  *      engine, NOT by whoever happens to hold an open channel. The transport
  *      keeps its channels private.
+ *
+ *      LOCKING CONTRACT, because it is not the same for every method:
+ *
+ *        - {@link #joinNetwork}, {@link #send} and {@link #shutdown} are called
+ *          with NO lock held. They are free to block.
+ *        - {@link #connect} and {@link #disconnect} are called UNDER the
+ *          algorithm lock and MUST NOT BLOCK.
+ *
+ *      The asymmetry is not an oversight: see the two methods below.
  */
 public interface PeerTransport {
 
@@ -35,11 +44,27 @@ public interface PeerTransport {
      * Opens a channel towards a peer that announced itself to us. Unlike
      * joinNetwork this needs no handshake: an incoming join already means the
      * remote has committed us on its side.
+     *
+     * CALLED UNDER THE ALGORITHM LOCK, and therefore MUST NOT BLOCK.
+     *
+     * Unlike {@link #send}, which the engine defers to a flush performed after
+     * releasing its monitor, this runs inside the decision itself: the channel
+     * has to appear atomically with the membership change that justifies it,
+     * or a message decided in the same step would find nothing to travel on.
+     *
+     * An implementation that must reach the network in order to connect has to
+     * do it asynchronously. Blocking here stalls EVERY inbound message, since
+     * they all queue on that one monitor.
      */
     void connect(PeerInfo peer);
 
     /**
      * Closes and forgets the channel towards the peer.
+     *
+     * CALLED UNDER THE ALGORITHM LOCK, and therefore MUST NOT BLOCK, for the
+     * same reason as {@link #connect(PeerInfo)}. Waiting for termination, or
+     * writing a goodbye on the wire, belongs to {@link #shutdown} — which is
+     * called with no lock held — not here.
      */
     void disconnect(int peerId);
 

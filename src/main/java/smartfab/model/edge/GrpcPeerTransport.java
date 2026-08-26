@@ -25,6 +25,15 @@ import smartfab.algorithms.ricart.PeerTransport;
  *
  *      Holds the channels and nothing else: it does not decide who is part of
  *      the network. That is PeerRegistry's job, inside the engine.
+ *
+ *      channelsLock is a LEAF LOCK: every path that takes it does map work and
+ *      returns, and nothing under it ever calls back into RicartEngine — the
+ *      gRPC callbacks in this class only print. That is what makes it safe for
+ *      the engine to call {@link #connect} and {@link #disconnect} while
+ *      holding its own monitor: the order engine -> channelsLock is never
+ *      inverted, so the two cannot form a cycle. Keep it that way; a callback
+ *      from here into the algorithm would turn this class into the second half
+ *      of a deadlock.
  */
 public final class GrpcPeerTransport implements PeerTransport {
 
@@ -127,6 +136,18 @@ public final class GrpcPeerTransport implements PeerTransport {
         commit(peer.getID(), openChannel(peer));
     }
 
+    /**
+     * Allocates the channel. It does NOT reach the network: a gRPC
+     * ManagedChannel is lazy, so build() dials nothing and the TCP connection
+     * is opened by the first RPC that travels on it. "Opening a channel" here
+     * is an object allocation and a map insertion.
+     *
+     * That is precisely what lets {@link #connect} honour the PeerTransport
+     * contract of not blocking under the algorithm lock, and it is the property
+     * the streaming migration removes: opening a communicate() stream here
+     * (GRPC_STREAMING_DESIGN.md, section 10) would be a real RPC, and connect()
+     * would have to stop being called under that lock.
+     */
     private PeerChannel openChannel(PeerInfo peer) {
         ManagedChannel channel = ManagedChannelBuilder
                 .forAddress(peer.getAddress(), peer.getPort())
@@ -147,6 +168,17 @@ public final class GrpcPeerTransport implements PeerTransport {
         System.out.println("PEER CONNECTED: " + peerId);
     }
 
+    /**
+     * Called under the algorithm lock, so it must return promptly.
+     *
+     * It does: ManagedChannel.shutdown() starts a GRACEFUL shutdown and returns
+     * immediately, letting the RPCs already in flight finish on their own.
+     * awaitTermination(), the blocking one, is deliberately never called here.
+     *
+     * The shutdown itself is issued OUTSIDE channelsLock: holding a lock across
+     * a library teardown that runs its own callbacks is how leaf locks stop
+     * being leaves.
+     */
     @Override
     public void disconnect(int peerId) {
         final PeerChannel removed;
@@ -234,28 +266,38 @@ public final class GrpcPeerTransport implements PeerTransport {
     /**
      * Starts an outgoing RPC on a Context detached from any incoming call.
      *
-     * EVERY outgoing RPC of this class must go through here, joinP2P included.
-     * io.grpc.Context is a thread local: whatever is attached to the thread
-     * when a call is created becomes that call's parent, and when the parent is
-     * cancelled the child call is cancelled with it.
+     * io.grpc.Context is a THREAD LOCAL: whatever is attached to the thread
+     * when a ClientCall is created silently becomes that call's parent, and
+     * when the parent is cancelled the child dies with it.
      *
-     * Nearly every send is triggered by a RECEIVED message: a request makes us
-     * send a grant. On that path the thread is a gRPC server thread and carries
-     * the Context of the incoming call. gRPC cancels that Context as soon as
-     * the handler closes its response, INCLUDING on success, so the grant we
-     * had just started, still in flight, died with it:
+     * THE PATH THIS ACTUALLY FIXES is send(): a grant is sent in reaction to a
+     * received request, so the thread is a gRPC server thread carrying the
+     * Context of the INCOMING call. gRPC cancels that Context the moment the
+     * handler closes its response - including on success, hence "without
+     * error" - and the grant we had just started, still in flight, died with
+     * it:
      *
      *     CANCELLED: io.grpc.Context was cancelled without error
      *
      * The peer waiting for that grant then waited forever, and nothing in any
-     * log said why. The anonymous threads that used to wrap every handler hid
-     * this by accident, since a fresh thread carries no Context: removing them
+     * log said why. Whether the grant survived was a race against the channel
+     * being already connected, which is why it looked like an intermittent
+     * algorithm bug. The anonymous threads that used to wrap every handler hid
+     * it by accident, a fresh thread carrying no Context: removing them
      * (commit 6fe42dd) is what exposed it.
      *
-     * ROOT is not a CancellableContext, so a call started under it has no
-     * cancellation listener attached at all and its lifetime is genuinely
-     * independent. That is the truth about these messages: they are
-     * notifications, not the reply to the call that happened to trigger them.
+     * JOIN IS DIFFERENT and was never broken: joinNetwork runs on the bootstrap
+     * thread, where Context.current() is already ROOT. It goes through here to
+     * keep one checkable invariant - no stub call in this class escapes the
+     * detach - rather than a comment about call sites that goes stale the day
+     * someone triggers a rejoin from onPeerUnreachable, which does run on a
+     * gRPC thread. Cost on that path is two thread local reads, once at
+     * startup.
+     *
+     * ROOT is not a CancellableContext, so a call started under it gets no
+     * cancellation listener at all: its lifetime is genuinely independent, and
+     * that is the truth about these messages. They are notifications, not the
+     * reply to whatever call happened to trigger them.
      *
      * The detach MUST be in a finally: gRPC worker threads are pooled and
      * reused, so leaving ROOT attached would silently strip the Context, and

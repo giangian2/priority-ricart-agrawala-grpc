@@ -17,6 +17,16 @@ import java.util.List;
  *      block, which is exactly what happens once messages travel on a
  *      persistent stream with HTTP/2 flow control.
  *
+ *      WHAT DOES NOT GO THROUGH HERE: opening and closing channels.
+ *      {@link PeerTransport#connect} and {@link PeerTransport#disconnect} are
+ *      still called inline, under the monitor, because a channel must appear
+ *      and disappear atomically with the membership change behind it. That is
+ *      safe only while those two do not block — see CONNECTION LIFECYCLE in
+ *      {@link RicartEngine}. The day it stops being true, this is the class
+ *      they belong in: an ordered list of actions rather than of messages, so
+ *      that a grant queued before a peer is dropped still goes out before the
+ *      channel is closed.
+ *
  *      NOT thread-safe: owned by the engine, always touched under its monitor.
  */
 final class Outbox {

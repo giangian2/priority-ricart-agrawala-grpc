@@ -26,10 +26,35 @@ import smartfab.model.events.ProductionLineEvent;
  *        - {@link RicartContext}            : what the states may drive
  *
  *      Every public method funnels through {@link #step(Runnable)}, which
- *      decides under the monitor and performs I/O outside of it. No public
- *      method touches the transport directly: that is what makes
- *      "network call while holding the algorithm lock" structurally impossible
- *      instead of merely avoided by discipline.
+ *      decides under the monitor and performs I/O outside of it: no message and
+ *      no event ever leaves this class while the lock is held.
+ *
+ *      CONNECTION LIFECYCLE IS THE ONE EXCEPTION, and it is deliberate.
+ *      {@link PeerTransport#connect} and {@link PeerTransport#disconnect} are
+ *      called from INSIDE the monitor, in {@link #onJoinPeerReceived} and
+ *      {@link #forgetPeer}. A channel has to appear and disappear atomically
+ *      with the membership change that causes it: opening it after the monitor
+ *      is released would let a message decided in the same step find nothing to
+ *      travel on, and closing it there would race with the next decision.
+ *
+ *      Two properties make that safe TODAY, and neither is permanent:
+ *
+ *        1. The lock order is one-way. This monitor is taken first, the
+ *           transport's channel lock second, and nothing in the transport ever
+ *           takes this monitor back: its gRPC callbacks only log. No cycle, so
+ *           no deadlock.
+ *        2. Neither call reaches the network. A gRPC channel is lazy and dials
+ *           on its first RPC, and ManagedChannel.shutdown() returns without
+ *           waiting. Both calls are, in practice, a map insertion and a map
+ *           removal.
+ *
+ *      PROPERTY 2 DIES WITH THE MOVE TO PERSISTENT STREAMS
+ *      (GRPC_STREAMING_DESIGN.md, section 10): connect() would have to open the
+ *      communicate() stream, an actual RPC, and disconnect() to write
+ *      onCompleted() on it. Both would then block on HTTP/2 flow control
+ *      towards a slow peer while every inbound handler queues on this monitor —
+ *      which is the deadlock {@link Outbox} exists to prevent. That migration
+ *      therefore has a prerequisite: route these two through the flush as well.
  */
 public final class RicartEngine implements MutualExclusionAlgorithm, PeerEventHandler, RicartContext {
 
@@ -85,6 +110,10 @@ public final class RicartEngine implements MutualExclusionAlgorithm, PeerEventHa
      * dispatcher hands control to application code. Doing any of those while
      * holding the monitor would let the gRPC receiving thread deadlock against
      * the thread that is sending.
+     *
+     * The split covers messages and events, NOT the opening and closing of
+     * channels: see CONNECTION LIFECYCLE in the class javadoc for why those two
+     * stay inside, and for what would have to change first.
      */
     private void step(Runnable decision) {
         final List<Outbox.Envelope>     toSend;
@@ -270,8 +299,14 @@ public final class RicartEngine implements MutualExclusionAlgorithm, PeerEventHa
             System.out.println("NEW PEER JOINED THE NETWORK: " + senderId
                     + " [" + senderAddress + ":" + senderPort + "]");
 
-            this.registry.add(new PeerInfo(senderId, senderAddress, senderPort));
-            this.transport.connect(new PeerInfo(senderId, senderAddress, senderPort));
+            PeerInfo newcomer = new PeerInfo(senderId, senderAddress, senderPort);
+            this.registry.add(newcomer);
+
+            /*
+             * Under the monitor on purpose, and safe only for as long as
+             * connect() does not block: CONNECTION LIFECYCLE, class javadoc.
+             */
+            this.transport.connect(newcomer);
 
             /*
              * If we are competing, the newcomer knows nothing about our pending
@@ -310,7 +345,9 @@ public final class RicartEngine implements MutualExclusionAlgorithm, PeerEventHa
         }
         System.out.println(reason + ": " + senderId);
 
+        /* under the monitor: CONNECTION LIFECYCLE, class javadoc */
         this.transport.disconnect(senderId);
+
         this.deferred.remove(senderId);
         this.roundState.forgetGrant(senderId);
 
