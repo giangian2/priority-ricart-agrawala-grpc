@@ -15,6 +15,8 @@ import smartfab.util.JsonMapper;
  *      MqttClientManager for manage mqtt client connection for both
  *      Publishers and Subscribers. In this way we centralize the configuration
  *      of the Client ad the publish / subscibe operations.
+ * 
+ * @todo NEED THREAD SAFETY AMONG PHAO MQTT PUBLISHING
  */
 public class MqttClientManager {
 
