@@ -51,7 +51,7 @@ public class MqttClientManager {
         }
     }
 
-    private void publish(String topic, String payload) throws MqttException {
+    private synchronized void publish(String topic, String payload) throws MqttException {
         MqttMessage message = new MqttMessage(payload.getBytes());
         message.setQos(0);
         message.setRetained(false);
