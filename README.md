@@ -24,9 +24,9 @@ communicate through shared *buffers* following a producer–consumer scheme:
 - **gRPC server** (`CalibrationServiceImpl`) — exposes `requestCalibration`,
   `grantCalibrationAccess` and `joinP2P`: it is the entry point for the mutual
   exclusion messages and for new peers joining the network.
-- **Mutual exclusion peer** (`RicartMutualExclusionPeer`) — encapsulates the
-  algorithm logic and the line's state machine (*Running*,
-  *WaitingForCalibration*, *UnderCalibration*).
+- **Mutual exclusion engine** (`RicartEngine`) — sole owner of the algorithm
+  state and of the line's state machine (*Idle*, *Waiting*, *Calibrating*), and
+  the only holder of a lock; see [Concurrency and locking](#concurrency-and-locking).
 
 Everything is wired together by a small **event bus** (`EventDispatcher` /
 `EventListener`): the `ProductionLine` observes the domain events
@@ -101,6 +101,85 @@ that should have invalidated it and it would be counted as valid again. To
 prevent this, every request carries a local **attempt number (round)**, which
 each grant echoes back. A line accepts a grant only if its round matches the
 current attempt; a grant carrying an old round is simply dropped. 
+
+## Concurrency and locking
+
+A line runs several threads that all reach the same algorithm state: the sensor
+pipeline asks for calibration, the gRPC server threads deliver requests and
+grants coming from other peers, and the shutdown hook waits for the critical
+section to be released. `RicartEngine` is the single owner of that state and the
+only holder of a lock.
+
+The rule is **decide under the lock, talk to the network outside it**. Every
+entry point funnels through `step()`, which runs the decision inside the monitor
+and collects its side effects — the messages to send, the events to publish —
+into an `Outbox` and a pending-events list. Both are drained and executed only
+after the monitor has been released. The state machine never sends anything: it
+appends, and someone else flushes.
+
+### Why the collaborators are not thread-safe
+
+`PeerRegistry`, `RoundState`, `DeferredGrants` and `Outbox` carry no
+`synchronized` of their own, and that is the design, not an omission. They are
+not shared objects: they are owned by the engine and reached only with its
+monitor already held — either from inside `step()`, or from the `synchronized`
+block in `shutdown()`. The state classes touch them only through `RicartContext`,
+which is implemented by the engine and never called from anywhere else.
+
+An earlier version did lock each of them individually, and it was strictly
+worse. `GrantTracker.hasQuorum(requiredGrants)` was `synchronized`, but
+`requiredGrants` came from the peer list under a *different* lock: each step was
+atomic and the decision as a whole was not, so a peer could join or leave in the
+gap between counting the members and comparing that count with the grants
+collected. The unit of atomicity that actually matters is the whole decision —
+*record this grant, count the members, enter the section, queue the outgoing
+messages* — and today that unit is exactly the body of `step()`. Re-adding inner
+locks would be reentrant and harmless at runtime, but it would advertise
+something false: that these classes can be used without the engine's monitor.
+
+### The two exceptions
+
+`PeerTransport.connect()` and `disconnect()` are called from *inside* the
+monitor, in `onJoinPeerReceived` and `forgetPeer`. That is deliberate: a channel
+has to appear and disappear atomically with the membership change that causes
+it, otherwise a message decided in the same step could find nothing to travel
+on. Two properties make it safe, and both are worth stating because neither is
+permanent:
+
+1. **The lock order is one-way.** The engine takes its own monitor first and the
+   transport's `channelsLock` second, and nothing under `channelsLock` ever
+   calls back into the engine — the gRPC callbacks in `GrpcPeerTransport` only
+   log. It is a leaf lock, so the two cannot form a cycle and no deadlock is
+   reachable.
+2. **Neither call touches the network.** A gRPC `ManagedChannel` is lazy:
+   `build()` allocates an object and dials nothing, the TCP connection is opened
+   by the first RPC. And `ManagedChannel.shutdown()` starts a graceful shutdown
+   and returns immediately, leaving in-flight RPCs to finish; `awaitTermination()`,
+   the blocking one, is never called there. In practice the two calls are a map
+   insertion and a map removal.
+
+### What changes with persistent streams
+
+The migration described in `GRPC_STREAMING_DESIGN.md` invalidates property 2.
+Once every peer is reached through one long-lived `communicate()` stream,
+`connect()` has to *open* that stream — an actual RPC — and `disconnect()` has to
+write `onCompleted()` on it. Both become network I/O performed while holding the
+algorithm lock, and a write on an HTTP/2 stream blocks as soon as the peer's
+flow-control window is exhausted.
+
+The failure that follows is a distributed deadlock, and it is silent. The thread
+holding the monitor blocks writing to a slow peer; every inbound gRPC handler
+queues behind that monitor; the line therefore stops consuming its own inbound
+messages; its receive window fills; and the peer writing to it blocks in turn.
+Two live processes, no exception thrown, nothing in any log to explain it. This
+is the exact scenario `Outbox` was introduced to make unreachable.
+
+So the migration carries a prerequisite: the connection lifecycle has to go
+through the same deferred flush as the messages. Either it is queued as an
+ordered action in the `Outbox` — ordered, so that a grant decided before a peer
+is dropped still goes out before its channel is closed — or it disappears
+altogether, by having the transport open channels on demand and keeping
+`PeerRegistry` as the only place where membership is decided.
 
 ## Usage
 

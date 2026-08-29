@@ -8,6 +8,7 @@ ADMIN_SERVER_MAIN 	= smartfab.SpringServer
 ADMIN_CLIENT_MAIN	= smartfab.http.client.AdminCLI
 
 clean:
+	rm -rf phao*/
 	./gradlew clean
 
 build:

@@ -1,0 +1,18 @@
+# Build
+build/
+bin/
+.gradle/
+out/
+
+# Runtime
+mosquitto/data/
+mosquitto/log/
+paho*-tcplocalhost*/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Utility locali
+commit-refactor.sh

@@ -1,64 +1,49 @@
 package smartfab.algorithms.ricart;
 
+import java.util.List;
+
 import smartfab.model.events.EventListener;
 import smartfab.model.events.ProductionLineEvent;
 
 /**
  * @author Gianluca Bianchi
  *
- *      Interface for modelling a mutual exclusion algorithm used to
- *      coordinate the "grant" of the calibration state across the distributed 
- *      production lines.
+ *      Application facing side of the mutual exclusion algorithm: what the
+ *      production line ASKS of it.
  *
- *      NOTE: Ricart and Agrawala has no explicit release message (release is an implicit grant).
+ *      Everything that ARRIVES from the network lives in
+ *      {@link PeerEventHandler} instead, so that the gRPC layer cannot invoke
+ *      an application command from a network thread.
+ *
+ *      NOTE: Ricart and Agrawala has no explicit release message: releasing is
+ *      an implicit grant to every deferred peer.
  */
 public interface MutualExclusionAlgorithm {
 
     /**
-     * 
-     * @param senderId
-     * @param senderAddress
-     * @param senderPort
+     * Joins the peer network, registering ONLY the peers that acknowledge us.
+     *
+     * Until this returns, requestCalibration is refused: with an empty topology
+     * the peer would believe it is alone and enter the section immediately.
+     *
+     * @param fromRegistry  peers returned by the registration server
+     * @param timeoutMillis how long to wait for the acknowledgements
+     * @return true if every candidate answered within the deadline
      */
-    void onJoinPeerReceived(int senderId, String senderAddress, int senderPort);
+    boolean join(List<PeerInfo> fromRegistry, long timeoutMillis);
 
     /**
-     * 
-     * @param senderId
-     */
-    void onExitPeerReceived(int senderId);
-
-    /**
-     * 
-     * @param criticality
+     * @param criticality the priority of this request: higher wins
      */
     void requestCalibration(double criticality);
 
-    /**
-     * 
-     */
     void releaseCalibration();
 
     /**
-     * 
-     * @param senderId
-     * @param senderCriticality
-     * @param round
+     * Leaves the network: waits for a calibration in progress, flushes the
+     * deferred grants, announces the exit and closes the transport.
      */
-    void onRequestReceived(int senderId, double senderCriticality, int round);
-
-    /**
-     * 
-     * @param senderId
-     * @param round
-     */
-    void onGrantReceived(int senderId, int round);
-
-    /**
-     * Register a listener for the production-line events emitted by the algorithm.
-     * @param listener
-     */
-    void subscribe(EventListener<ProductionLineEvent> listener);
-
     void shutdown();
+
+    void subscribe(EventListener<ProductionLineEvent> listener);
 }

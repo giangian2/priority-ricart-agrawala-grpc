@@ -2,49 +2,46 @@ package smartfab.algorithms.ricart;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.BiConsumer;
 
 /**
  * @author Gianluca Bianchi
- * 
- *      THREAD-SAFE queue of peers whose calibration requests have been deferred because the
- *      local peer had priority. On release every deferred peer is granted access
+ *
+ *      Peers whose calibration request was deferred because the local peer had
+ *      priority. On release every deferred peer is granted access.
+ *
+ *      Kept separate from {@link RoundState} because its lifetime is different:
+ *      a deferred entry outlives the round it was created in, and the round it
+ *      stores is the REQUESTER's round, not ours.
+ *
+ *      NOT thread-safe: owned by {@link RicartEngine}.
  */
 final class DeferredGrants {
 
-    private final Map<Integer,Integer> queue;
+    /** peerId -> the round of THAT peer's deferred request */
+    private final Map<Integer,Integer> queue = new HashMap<>();
 
-    public DeferredGrants(){
-        this.queue = new HashMap<>();
-    }
-
-    /**
-     * Add the peer to the deferred queue
-     * @param peerId
-     */
-    public synchronized void defer(int peerId, int round) {
+    void defer(int peerId, int round) {
         this.queue.put(peerId, round);
     }
 
-    /**
-     * Sends a grant to every deferred peer (in FIFO order) and empties the queue
-     * @param grantSender
-     */
-    public synchronized void releaseAll(BiConsumer<Integer,Integer> grantSender) {
-        this.queue.entrySet()
-                .stream()
-                .forEach((entry)->grantSender.accept(entry.getKey(), entry.getValue()));
-        this.queue.clear();
-    }
-
-    public synchronized void remove(int peerId) {
+    void remove(int peerId) {
         this.queue.remove(peerId);
     }
 
     /**
-     * Clears the deferred queue
+     * @return every deferred entry, leaving the queue empty
      */
-    public synchronized void clear() {
+    Map<Integer,Integer> drain() {
+        Map<Integer,Integer> copy = Map.copyOf(this.queue);
         this.queue.clear();
+        return copy;
+    }
+
+    void clear() {
+        this.queue.clear();
+    }
+
+    boolean isEmpty() {
+        return this.queue.isEmpty();
     }
 }
