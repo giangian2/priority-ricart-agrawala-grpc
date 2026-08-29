@@ -26,6 +26,59 @@ import smartfab.model.events.EventListener;
  */
 public class ProductionLine implements EventListener<ProductionLineEvent> {
 
+    private static final class ProductionLineBuilder {
+        private PeerInfo                  peerInfo;
+        private MutualExclusionAlgorithm  algorithm;
+        private MonitoringSensor          sensorThread;
+        private SlidingWindowProcessor    slidingWindowProcessorThread;
+        private AveragesConsumer          averagesConsumerThread;
+        private MeasurementBuffer         measurementBuffer;
+        private AveragesBuffer            averagesBuffer;
+
+        ProductionLineBuilder peerInfo(int lineId, String lineAddress, int linePort) {
+            this.peerInfo = new PeerInfo(lineId, lineAddress, linePort);
+            return this;
+        }
+
+        ProductionLineBuilder algorithm(MutualExclusionAlgorithm algorithm) {
+            this.algorithm = algorithm;
+            return this;
+        }
+
+        ProductionLineBuilder sensorThread(MonitoringSensor sensorThread) {
+            this.sensorThread = sensorThread;
+            return this;
+        }
+
+        ProductionLineBuilder slidingWindowProcessorThread(SlidingWindowProcessor slidingWindowProcessorThread) {
+            this.slidingWindowProcessorThread = slidingWindowProcessorThread;
+            return this;
+        }
+
+        ProductionLineBuilder averagesConsumerThread(AveragesConsumer averagesConsumerThread) {
+            this.averagesConsumerThread = averagesConsumerThread;
+            return this;
+        }
+
+        ProductionLineBuilder measurementBuffer(MeasurementBuffer measurementBuffer) {
+            this.measurementBuffer = measurementBuffer;
+            return this;
+        }
+
+        ProductionLineBuilder averagesBuffer(AveragesBuffer averagesBuffer) {
+            this.averagesBuffer = averagesBuffer;
+            return this;
+        }
+
+        ProductionLine build() {
+            return new ProductionLine(this);
+        }
+    }
+
+    public static ProductionLineBuilder builder() {
+        return new ProductionLineBuilder();
+    }
+
     public static enum ProductionLineStatus {
         RUNNINING,
         WAITING_FOR_CALIBRATION,
@@ -40,46 +93,14 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
     private final MeasurementBuffer         measurementBuffer;
     private final AveragesBuffer            averagesBuffer;
 
-    public ProductionLine(int lineId,
-            String lineAddress,
-            int linePort,
-            MutualExclusionAlgorithm algorithm,
-            MonitoringSensor sensorThread,
-            SlidingWindowProcessor slidingWindowProcessor,
-            AveragesConsumer averagesConsumerThread,
-            MeasurementBuffer measurementBuffer,
-            AveragesBuffer averagesBuffer) {
-
-        this.peerInfo                       = new PeerInfo(lineId, lineAddress, linePort);
-        this.algorithm                      = algorithm;
-        this.sensorThread                   = sensorThread;
-        this.slidingWindowProcessorThread   = slidingWindowProcessor;
-        this.averagesConsumerThread         = averagesConsumerThread;
-        this.measurementBuffer              = measurementBuffer;
-        this.averagesBuffer                 = averagesBuffer;
-    }
-
-    /**
-     * Wires the production line on top of an already built algorithm.
-     *
-     * Deliberately does NO networking: registering with the admin server and
-     * joining the peer network are ordered steps of the bootstrap in main, and
-     * hiding them here made that order impossible to see or to get right.
-     */
-    public static ProductionLine init(int lineId, String lineAddress, int linePort,
-            MutualExclusionAlgorithm algorithm, AveragesBuffer averagesBuffer,
-            MeasurementBuffer measurementBuffer, MonitoringSensor sensorThread,
-            SlidingWindowProcessor slidingWindowProcessor, AveragesConsumer averagesConsumer) {
-
-        return new ProductionLine(lineId,
-                lineAddress,
-                linePort,
-                algorithm,
-                sensorThread,
-                slidingWindowProcessor,
-                averagesConsumer,
-                measurementBuffer,
-                averagesBuffer);
+    private ProductionLine(ProductionLineBuilder builder) {
+        this.peerInfo                       = builder.peerInfo;
+        this.algorithm                      = builder.algorithm;
+        this.sensorThread                   = builder.sensorThread;
+        this.slidingWindowProcessorThread   = builder.slidingWindowProcessorThread;
+        this.averagesConsumerThread         = builder.averagesConsumerThread;
+        this.measurementBuffer              = builder.measurementBuffer;
+        this.averagesBuffer                 = builder.averagesBuffer;
     }
 
     public void start() {
@@ -195,16 +216,15 @@ public class ProductionLine implements EventListener<ProductionLineEvent> {
         var averagesConsumer        = new AveragesConsumer(lineId, averagesBuffer);
         var peerRestClient          = new PeerRestClient(serverUrl);
 
-        ProductionLine pl = ProductionLine.init(
-                lineId,
-                localIp,
-                localPort,
-                algorithm,
-                averagesBuffer,
-                measurementBuffer,
-                sensorThread,
-                slidingWindowProcessor,
-                averagesConsumer);
+        ProductionLine pl = ProductionLine.builder()
+                .peerInfo(lineId, localIp, localPort)
+                .algorithm(algorithm)
+                .sensorThread(sensorThread)
+                .slidingWindowProcessorThread(slidingWindowProcessor)
+                .averagesConsumerThread(averagesConsumer)
+                .measurementBuffer(measurementBuffer)
+                .averagesBuffer(averagesBuffer)
+                .build();
 
         pl.slidingWindowProcessorThread.subscribe(pl);
         algorithm.subscribe(pl);
